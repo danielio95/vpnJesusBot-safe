@@ -10,6 +10,11 @@ config.json
 # FOLDERS
 __pycache__*/
 old*/
+android*/
+ios*/
+windows*/
+macos*/
+linux*/
 
 # BINS
 xray
