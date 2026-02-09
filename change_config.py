@@ -1,5 +1,7 @@
 import argparse
 import sys
+from logging import basicConfig, DEBUG
+import logging
 
 from payment_config import (
     apply_duration_logic,
@@ -8,6 +10,12 @@ from payment_config import (
     load_data,
     save_data,
 )
+
+basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=DEBUG,
+)
+logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Update existing user data in data.json.")
@@ -22,18 +30,22 @@ def main():
 
     args = parser.parse_args()
 
+    logger.debug("Loading data for update user id=%s", args.id)
     data = load_data()
 
     if args.id not in data:
+        logger.error("User id not found for update: %s", args.id)
         print(f"Error: User ID '{args.id}' does not exist.")
         sys.exit(1)
 
     payment_structure = create_empty_payments()
 
     if args.months > 0:
+        logger.debug("Applying duration logic months=%s", args.months)
         apply_duration_logic(payment_structure, args.months)
 
     if args.paid:
+        logger.debug("Applying manual paid overrides: %s", args.paid)
         apply_manual_paid(payment_structure, args.paid)
 
     data[args.id] = {
@@ -43,9 +55,11 @@ def main():
     }
 
     try:
+        logger.debug("Saving updated data for user id=%s", args.id)
         save_data(data)
         print(f"Success: Updated User ID '{args.id}' ({args.name}).")
     except Exception as error:
+        logger.exception("Error saving data for user id=%s", args.id)
         print(f"Error saving file: {error}")
 
 if __name__ == "__main__":

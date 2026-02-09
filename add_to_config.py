@@ -1,5 +1,7 @@
 import argparse
 import sys
+from logging import basicConfig, DEBUG
+import logging
 
 from payment_config import (
     apply_duration_logic,
@@ -8,6 +10,12 @@ from payment_config import (
     load_data,
     save_data,
 )
+
+basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=DEBUG,
+)
+logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Add user with duration and advanced manual selection.")
@@ -27,10 +35,12 @@ def main():
     args = parser.parse_args()
 
     # 1. Load Data
+    logger.debug("Loading data for new user id=%s", args.id)
     data = load_data()
 
     # 2. Check Duplicates
     if args.id in data:
+        logger.error("Duplicate user id detected: %s", args.id)
         print(f"Error: User ID '{args.id}' already exists.")
         sys.exit(1)
 
@@ -39,9 +49,11 @@ def main():
 
     # 4. Apply Logic
     if args.months > 0:
+        logger.debug("Applying duration logic months=%s", args.months)
         apply_duration_logic(payment_structure, args.months)
     
     if args.paid:
+        logger.debug("Applying manual paid overrides: %s", args.paid)
         apply_manual_paid(payment_structure, args.paid)
 
     # 5. Construct & Save
@@ -54,9 +66,11 @@ def main():
     data[args.id] = new_entry
     
     try:
+        logger.debug("Saving data for user id=%s", args.id)
         save_data(data)
         print(f"Success: Added User ID '{args.id}' ({args.name}).")
     except Exception as e:
+        logger.exception("Error saving data for user id=%s", args.id)
         print(f"Error saving file: {e}")
 
 if __name__ == "__main__":
