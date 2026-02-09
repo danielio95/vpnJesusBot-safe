@@ -1,8 +1,10 @@
-from os import getenv, urandom
+from os import getenv, urandom, remove
 from sys import argv, exit
 from uuid import uuid4
 from logging import basicConfig, DEBUG
 import logging
+import json
+from tempfile import NamedTemporaryFile
 
 from module import API_PORT, API_SERVER, run_xray_api
 
@@ -20,20 +22,62 @@ PORT = getenv("XRAY_PUBLIC_PORT", "443")
 PBK = getenv("XRAY_REALITY_PBK", "x")
 SNI = getenv("XRAY_REALITY_SNI", "x")
 REALITY_SID = getenv("XRAY_REALITY_SID")
+INBOUND_LISTEN = getenv("XRAY_INBOUND_LISTEN", "0.0.0.0")
+INBOUND_PORT = int(getenv("XRAY_INBOUND_PORT", "8443"))
+INBOUND_PROTOCOL = getenv("XRAY_INBOUND_PROTOCOL", "vless")
+
+def build_add_user_payload(email, user_id):
+    return {
+        "inbounds": [
+            {
+                "tag": INBOUND_TAG,
+                "listen": INBOUND_LISTEN,
+                "port": INBOUND_PORT,
+                "protocol": INBOUND_PROTOCOL,
+                "settings": {
+                    "clients": [
+                        {
+                            "id": user_id,
+                            "level": LEVEL,
+                            "email": email,
+                            "flow": FLOW,
+                        }
+                    ],
+                    "decryption": "none",
+                    "fallbacks": [],
+                },
+            }
+        ]
+    }
 
 def add_user(email):
     user_id = str(uuid4())
     sid = REALITY_SID or str(urandom(8).hex())
     logger.debug("Adding user email=%s user_id=%s", email, user_id)
+    payload = build_add_user_payload(email, user_id)
+    temp_file = None
+    temp_path = None
+    try:
+        temp_file = NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump(payload, temp_file)
+        temp_file.flush()
+        temp_path = temp_file.name
+    finally:
+        if temp_file is not None:
+            temp_file.close()
 
-    result = run_xray_api([
-        "adduser",
-        f"--server={API_SERVER}:{API_PORT}",
-        f"--tag={INBOUND_TAG}",
-        f"--email={email}",
-        f"--uuid={user_id}",
-        f"--level={LEVEL}",
-    ])
+    try:
+        result = run_xray_api([
+            "adu",
+            f"--server={API_SERVER}:{API_PORT}",
+            temp_path,
+        ])
+    finally:
+        if temp_path:
+            try:
+                remove(temp_path)
+            except FileNotFoundError:
+                logger.warning("Temporary payload file already removed: %s", temp_path)
 
     if result.returncode != 0:
         logger.error("Failed to add user: %s", result.stderr.strip() or "unknown error")
