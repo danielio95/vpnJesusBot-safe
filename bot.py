@@ -82,6 +82,8 @@ def _prune_payments(payments):
         year = int(year_str)
         if year > MAX_PAYMENT_YEAR:
             continue
+        if year != MAX_PAYMENT_YEAR:
+            continue
         month_data = months if isinstance(months, dict) else {}
         cleaned[year_str] = {
             month: _normalize_payment_value(month_data.get(month, 0))
@@ -164,7 +166,7 @@ def build_vless_config(user_id, sid):
     )
 
 def ensure_year(payments, year):
-    if year > MAX_PAYMENT_YEAR:
+    if year != MAX_PAYMENT_YEAR:
         return
     year_key = str(year)
     if year_key not in payments or not isinstance(payments[year_key], dict):
@@ -188,9 +190,9 @@ def mark_current_month_paid(all_users_data, user_id_str, user_name):
 
     ensure_year(payments, curr_year)
     ensure_year(payments, next_year)
-    if curr_year <= MAX_PAYMENT_YEAR:
+    if curr_year == MAX_PAYMENT_YEAR:
         payments[str(curr_year)][curr_month_key] = 1
-    if next_year <= MAX_PAYMENT_YEAR:
+    if next_year == MAX_PAYMENT_YEAR:
         payments[str(next_year)][next_month_key] = 0
 
 # --- LOGIC HELPERS ---
