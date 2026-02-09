@@ -5,10 +5,10 @@ from uuid import uuid4
 from json import load,dump
 
 config_file='config.json'
-ip='45.151.183.231'
+ip='x.x.x.x'
 port='443'
-pbk='J8-18qflZog-ffsXWh290d7OjFyDmRW81nymvEsm1F0'
-sni='bostad.blocket.se'
+pbk='x'
+sni='x'
 
 def add_user(inbound_tag,uuid,level,email,sid):
     global config_file
