@@ -1,18 +1,16 @@
+from logging import basicConfig, DEBUG, getLogger
+from tempfile import NamedTemporaryFile
 from os import getenv, urandom, remove
 from sys import argv, exit
 from uuid import uuid4
-from logging import basicConfig, DEBUG
-import logging
-import json
-from tempfile import NamedTemporaryFile
-
+from json import dump
 from module import API_PORT, API_SERVER, run_xray_api
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=DEBUG,
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
 LEVEL = int(getenv("XRAY_USER_LEVEL", "0"))
@@ -59,7 +57,7 @@ def add_user(email):
     temp_path = None
     try:
         temp_file = NamedTemporaryFile("w", suffix=".json", delete=False)
-        json.dump(payload, temp_file)
+        dump(payload, temp_file)
         temp_file.flush()
         temp_path = temp_file.name
     finally:

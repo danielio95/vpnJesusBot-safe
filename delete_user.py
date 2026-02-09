@@ -16,10 +16,10 @@ INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
 def delete_user(email):
     logger.debug("Deleting user email=%s", email)
     result = run_xray_api([
-        "removeuser",
+        "rmu",
         f"--server={API_SERVER}:{API_PORT}",
-        f"--tag={INBOUND_TAG}",
-        f"--email={email}",
+        f"-tag={INBOUND_TAG}",
+        email
     ])
 
     if result.returncode != 0:
