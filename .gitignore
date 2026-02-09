@@ -10,6 +10,7 @@ config.json
 # FOLDERS
 __pycache__*/
 old*/
+log*/
 android*/
 ios*/
 windows*/
