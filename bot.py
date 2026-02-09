@@ -1,5 +1,5 @@
 from os import getenv, path, listdir
-from datetime import datetime
+from datetime import datetime, timedelta
 from json import load, dump, JSONDecodeError
 from logging.handlers import RotatingFileHandler
 from typing import Optional
@@ -155,6 +155,28 @@ def get_user_entry(all_users_data, user_id_str, user_name=""):
     entry = _normalize_user_entry(user_id_str, all_users_data.get(user_id_str, {}))
     if user_name and not entry.get("name"):
         entry["name"] = user_name
+    all_users_data[user_id_str] = entry
+    return entry
+
+def _build_initial_payments(current_month_idx):
+    year_key = str(MAX_PAYMENT_YEAR)
+    payments = {year_key: {month: 0 for month in MONTH_MAP.values()}}
+    payments[year_key][MONTH_MAP[current_month_idx]] = 1
+    return payments
+
+def initialize_user_entry(all_users_data, user_id_str, user_name):
+    now = datetime.now()
+    due_date = now + timedelta(days=3)
+    entry = {
+        "name": user_name or "",
+        "date": due_date.day,
+        "payments": _build_initial_payments(now.month),
+        "xray": {
+            "email": user_id_str,
+            "id": "",
+            "shortid": "",
+        },
+    }
     all_users_data[user_id_str] = entry
     return entry
 
@@ -633,7 +655,10 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['awaiting_question'] = False
         context.user_data['instruction_mode'] = False
         user_name = update.effective_user.first_name
-        user_entry = get_user_entry(all_users_data, user_id_str, user_name)
+        if user_id_str in all_users_data:
+            user_entry = get_user_entry(all_users_data, user_id_str, user_name)
+        else:
+            user_entry = initialize_user_entry(all_users_data, user_id_str, user_name)
         xray_info = user_entry["xray"]
         if not xray_info.get("email"):
             xray_info["email"] = user_id_str
@@ -648,21 +673,10 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             xray_info["id"] = user_id
             xray_info["shortid"] = sid
 
-        mark_current_month_paid(all_users_data, user_id_str, user_name)
         save_bot_data(all_users_data)
 
         config_string = build_vless_config(user_id, sid)
-        config_message = (
-            "Ваш конфиг готов:\n"
-            f"id: {user_id}\n"
-            f"shortid: {sid}\n"
-            f"pbk: {PBK}\n"
-            f"serverName: {SNI}\n"
-            f"ip: {IP}\n"
-            f"port: {PORT}\n"
-            f"config: {config_string}"
-        )
-        await update.message.reply_text(config_message, reply_markup=reply_markup)
+        await update.message.reply_text(config_string, reply_markup=reply_markup)
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
