@@ -1,83 +1,51 @@
-from module import restart_xray,find_child
-from sys import argv,exit
-from os import urandom
+from os import getenv, urandom
+from sys import argv, exit
 from uuid import uuid4
-from json import load,dump
 
-config_file='config.json'
-ip='x.x.x.x'
-port='443'
-pbk='x'
-sni='x'
+from module import API_PORT, API_SERVER, run_xray_api
 
-def add_user(inbound_tag,uuid,level,email,sid):
-    global config_file
+INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
+LEVEL = int(getenv("XRAY_USER_LEVEL", "0"))
+FLOW = getenv("XRAY_FLOW", "xtls-rprx-vision")
+IP = getenv("XRAY_PUBLIC_IP", "x.x.x.x")
+PORT = getenv("XRAY_PUBLIC_PORT", "443")
+PBK = getenv("XRAY_REALITY_PBK", "x")
+SNI = getenv("XRAY_REALITY_SNI", "x")
+REALITY_SID = getenv("XRAY_REALITY_SID")
 
-    with open(config_file,'r') as read:
-        data=load(read)
+def add_user(email):
+    user_id = str(uuid4())
+    sid = REALITY_SID or str(urandom(8).hex())
 
-    inbounds=find_child(data,'inbounds')
-    for inbound in inbounds:
-        values=list(inbound.values())
-        if values[0]!=inbound_tag:
-            continue
+    result = run_xray_api([
+        "adduser",
+        f"--server={API_SERVER}:{API_PORT}",
+        f"--tag={INBOUND_TAG}",
+        f"--email={email}",
+        f"--uuid={user_id}",
+        f"--level={LEVEL}",
+    ])
 
-        # add client
-        settings=find_child(inbound,'settings')
-        clients=find_child(settings,'clients')
-        user={
-            "id":uuid,
-            "level":level,
-            "email":email,
-            "flow":"xtls-rprx-vision"
-        }
-        clients.append(user)
+    if result.returncode != 0:
+        print(result.stderr.strip() or "error: could not add user")
+        return None, None
 
-        # add shortId
-        streamSettings=find_child(inbound,'streamSettings')
-        realitySettings=find_child(streamSettings,'realitySettings')
-        shortIds=find_child(realitySettings,'shortIds')
-        shortIds.append(sid)
+    print(f"added user {email}")
+    return user_id, sid
 
-        # dump the rest of config back
-        with open(config_file,'w') as write:
-            dump(data,write,indent=4)
+def output_vless_string(user_id, sid):
+    print(
+        f"vless://{user_id}@{IP}:{PORT}"
+        f"?security=reality&encryption=none&pbk={PBK}&headerType=none"
+        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#xray"
+    )
 
-        print(f'added user {email} {sid}')
-        return
-
-#def create_json(uuid,level,email):
-#    user_json={
-#        "id":uuid,
-#        "level":level,
-#        "email":email,
-#        "flow":"xtls-rptx-vision"
-#    }
-#
-#    return json.dumps(user_json,indent=4)
-
-def output_vless_string(uuid,sid):
-    global ip
-    global port
-    global pbk
-    global sni
-
-    print(f'vless://{uuid}@{ip}:{port}?security=reality&encryption=none&pbk={pbk}&headerType=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni={sni}&sid={sid}#xray')
-
-if __name__=='__main__':
-    if len(argv)<5:
-        print(f'usage: python3 {argv[0]} <inbound_tag> <level> <email> <restart>')
+if __name__ == "__main__":
+    if len(argv) < 2:
+        print(f"usage: python3 {argv[0]} <email>")
         exit(1)
-    
-    uuid=str(uuid4())
-    sid=str(urandom(8).hex())
-    inbound_tag=argv[1]
-    level=int(argv[2])
-    email=argv[3]
-    restart=argv[4]
 
-    #user_json=create_json(uuid,level,email)
-    add_user(inbound_tag,uuid,level,email,sid)
-    output_vless_string(uuid,sid)
-    if restart=='1':
-        restart_xray()
+    email = argv[1]
+    user_id, sid = add_user(email)
+    if user_id and sid:
+        output_vless_string(user_id, sid)
