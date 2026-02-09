@@ -31,6 +31,7 @@ def find_child(data,parent):
 XRAY_BIN = getenv("XRAY_BIN", "./xray")
 API_SERVER = getenv("XRAY_API_SERVER", "127.0.0.1")
 API_PORT = getenv("XRAY_API_PORT", "10002")
+INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
 
 def run_xray_api(args):
     logger.debug("Running xray api command args=%s", args)
@@ -69,26 +70,32 @@ def extract_emails_from_stats(stats):
     logger.debug("Extracted %s emails from stats", len(emails))
     return sorted(emails)
 
-def get_users_from_api(server=API_SERVER, port=API_PORT):
-    logger.debug("Fetching users from api server=%s port=%s", server, port)
+def get_users_from_api(server=API_SERVER, port=API_PORT, inbound_tag=INBOUND_TAG):
+    logger.debug(
+        "Fetching users from api server=%s port=%s inbound_tag=%s",
+        server,
+        port,
+        inbound_tag,
+    )
     data = load_xray_api_json([
-        "statsquery",
+        "inbounduser",
         f"--server={server}:{port}",
-        "--pattern",
-        "user>>>",
-        "--reset=false",
+        f"-tag={inbound_tag}",
     ])
     if not data:
         logger.debug("No data returned from api")
         return []
 
-    stats = data.get("stat", [])
-    if isinstance(stats, dict):
-        stats = [stats]
-    if not isinstance(stats, list):
-        logger.debug("Unexpected stats type=%s", type(stats))
+    users = data.get("users", [])
+    if isinstance(users, dict):
+        users = [users]
+    if not isinstance(users, list):
+        logger.debug("Unexpected users type=%s", type(users))
         return []
-    return extract_emails_from_stats(stats)
+    emails = [entry.get("email") for entry in users if isinstance(entry, dict)]
+    filtered = sorted({email for email in emails if email})
+    logger.debug("Collected %s emails from inbound users", len(filtered))
+    return filtered
 
 def normalize_connection(entry):
     if isinstance(entry, dict):
