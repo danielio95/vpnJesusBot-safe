@@ -10,14 +10,14 @@ basicConfig(
 )
 logger = getLogger(__name__)
 
-def restart_xray():
-    try:
-        run(['sudo','systemctl','restart','xray.service'],check=True)
-        print('xray restarted')
-        logger.debug("xray service restarted successfully")
-    except CalledProcessError as error:
-        logger.exception("Failed to restart xray service")
-        print(f'error: {error}')
+#def restart_xray():
+#    try:
+#        run(['sudo','systemctl','restart','xray.service'],check=True)
+#        print('xray restarted')
+#        logger.debug("xray service restarted successfully")
+#    except CalledProcessError as error:
+#        logger.exception("Failed to restart xray service")
+#        print(f'error: {error}')
 
 def find_child(data,parent):
     if parent not in data:
