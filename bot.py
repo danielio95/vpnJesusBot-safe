@@ -10,7 +10,8 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filte
 # --- CONFIGURATION ---
 ADMIN_ID = getenv("TELEGRAM_ADMIN_ID")
 BOT_TOKEN = getenv("TELEGRAM_BOT_TOKEN")
-DATA_FILE = "data.json"
+DATA_FILE = "users.json"
+MAX_PAYMENT_YEAR = 2026
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -25,7 +26,7 @@ logger = getLogger(__name__)
 # --- MESSAGES ---
 
 msg_error = "Возникла проблема. Пожалуйста, сообщите администратору."
-msg_paid_full = "Оплачено до 2029 года."
+msg_paid_full = "Оплачено до 2026 года."
 msg_paid = "Всё готово. Оплата не требуется."
 msg_unpaid = "Для дальнейшего использования VPN необходимо внести оплату."
 msg_noID = "Мне не удалось найти ваш ID в базе данных."
@@ -61,6 +62,57 @@ MONTH_MAP = {
 
 # --- DATA MANAGEMENT ---
 
+def _normalize_payment_value(value):
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        return 1 if int(value) == 1 else 0
+    except (TypeError, ValueError):
+        return 0
+
+def _prune_payments(payments):
+    if not isinstance(payments, dict):
+        return {}
+    cleaned = {}
+    for year_key, months in payments.items():
+        year_str = str(year_key)
+        if not year_str.isdigit():
+            continue
+        year = int(year_str)
+        if year > MAX_PAYMENT_YEAR:
+            continue
+        month_data = months if isinstance(months, dict) else {}
+        cleaned[year_str] = {
+            month: _normalize_payment_value(month_data.get(month, 0))
+            for month in MONTH_MAP.values()
+        }
+    return cleaned
+
+def _normalize_xray_data(xray_data, default_email=""):
+    data = xray_data if isinstance(xray_data, dict) else {}
+    return {
+        "email": data.get("email", default_email) or default_email,
+        "id": data.get("id", ""),
+        "shortid": data.get("shortid", ""),
+    }
+
+def _normalize_user_entry(user_id_str, entry):
+    base = entry if isinstance(entry, dict) else {}
+    return {
+        "name": base.get("name", ""),
+        "date": base.get("date", 1),
+        "payments": _prune_payments(base.get("payments", {})),
+        "xray": _normalize_xray_data(base.get("xray", {}), default_email=user_id_str),
+    }
+
+def _normalize_users_data(data):
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(user_id): _normalize_user_entry(str(user_id), entry)
+        for user_id, entry in data.items()
+    }
+
 def load_user_data(filename=DATA_FILE):
     """
     Loads user data from the JSON file.
@@ -72,8 +124,9 @@ def load_user_data(filename=DATA_FILE):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = load(f)
-            logger.debug("Loaded user data: %s users", len(data))
-            return data
+            normalized = _normalize_users_data(data)
+            logger.debug("Loaded user data: %s users", len(normalized))
+            return normalized
     except FileNotFoundError:
         logger.exception("User data file not found: %s", file_path)
         return {}
@@ -93,7 +146,14 @@ def save_bot_data(data, filename=DATA_FILE):
     base_path = path.dirname(__file__)
     file_path = path.join(base_path, filename)
     with open(file_path, 'w', encoding='utf-8') as f:
-        dump(data, f, indent=4, ensure_ascii=False)
+        dump(_normalize_users_data(data), f, indent=4, ensure_ascii=False)
+
+def get_user_entry(all_users_data, user_id_str, user_name=""):
+    entry = _normalize_user_entry(user_id_str, all_users_data.get(user_id_str, {}))
+    if user_name and not entry.get("name"):
+        entry["name"] = user_name
+    all_users_data[user_id_str] = entry
+    return entry
 
 def build_vless_config(user_id, sid):
     return (
@@ -103,11 +163,13 @@ def build_vless_config(user_id, sid):
     )
 
 def ensure_year(payments, year):
+    if year > MAX_PAYMENT_YEAR:
+        return
     year_key = str(year)
     if year_key not in payments or not isinstance(payments[year_key], dict):
         payments[year_key] = {}
     for month in MONTH_MAP.values():
-        payments[year_key].setdefault(month, 0)
+        payments[year_key][month] = _normalize_payment_value(payments[year_key].get(month, 0))
 
 def mark_current_month_paid(all_users_data, user_id_str, user_name):
     now = datetime.now()
@@ -120,20 +182,15 @@ def mark_current_month_paid(all_users_data, user_id_str, user_name):
         next_year += 1
     next_month_key = MONTH_MAP[next_month_idx]
 
-    user_entry = all_users_data.setdefault(
-        user_id_str,
-        {"name": user_name or "", "date": 1, "payments": {}}
-    )
-    if user_name and not user_entry.get("name"):
-        user_entry["name"] = user_name
-    user_entry.setdefault("date", 1)
-    user_entry.setdefault("payments", {})
+    user_entry = get_user_entry(all_users_data, user_id_str, user_name)
     payments = user_entry["payments"]
 
     ensure_year(payments, curr_year)
     ensure_year(payments, next_year)
-    payments[str(curr_year)][curr_month_key] = 1
-    payments[str(next_year)][next_month_key] = 0
+    if curr_year <= MAX_PAYMENT_YEAR:
+        payments[str(curr_year)][curr_month_key] = 1
+    if next_year <= MAX_PAYMENT_YEAR:
+        payments[str(next_year)][next_month_key] = 0
 
 # --- LOGIC HELPERS ---
 
@@ -214,7 +271,7 @@ def get_payment_status(user_data):
         search_month_idx = next_month_idx
 
     next_unpaid_str = None
-    for y in range(search_year, 2030):
+    for y in range(search_year, MAX_PAYMENT_YEAR + 1):
         m_start = search_month_idx if y == search_year else 1
         for m in range(m_start, 13):
             m_key = MONTH_MAP[m]
@@ -562,10 +619,20 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['awaiting_question'] = False
         context.user_data['instruction_mode'] = False
         user_name = update.effective_user.first_name
-        user_id, sid = add_xray_user(user_id_str)
+        user_entry = get_user_entry(all_users_data, user_id_str, user_name)
+        xray_info = user_entry["xray"]
+        if not xray_info.get("email"):
+            xray_info["email"] = user_id_str
+
+        user_id = xray_info.get("id")
+        sid = xray_info.get("shortid")
         if not user_id or not sid:
-            await update.message.reply_text(msg_error, reply_markup=reply_markup)
-            return
+            user_id, sid = add_xray_user(xray_info["email"])
+            if not user_id or not sid:
+                await update.message.reply_text(msg_error, reply_markup=reply_markup)
+                return
+            xray_info["id"] = user_id
+            xray_info["shortid"] = sid
 
         mark_current_month_paid(all_users_data, user_id_str, user_name)
         save_bot_data(all_users_data)
