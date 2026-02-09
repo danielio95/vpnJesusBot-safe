@@ -310,7 +310,7 @@ def get_payment_status(user_data):
 
 def _get_instruction_steps(platform_name):
     base_path = path.dirname(__file__)
-    platform_path = path.join(base_path, platform_name)
+    platform_path = path.join(base_path, "instructions", platform_name)
     if not path.isdir(platform_path):
         return []
     steps = []
