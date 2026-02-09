@@ -69,102 +69,74 @@ def load_user_data(filename=DATA_FILE):
 
 # --- LOGIC HELPERS ---
 
+PAID_STATUS = "1"
+UNPAID_STATUS = "0"
+
+MONTH_MAP = {
+    1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
+    7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
+}
+
+def _get_month_status(payments, year, month_idx):
+    return str(payments.get(str(year), {}).get(MONTH_MAP[month_idx], UNPAID_STATUS))
+
 def get_payment_status(user_data):
     """
-    1. Determine 'relevant' month (Current vs Next based on due date).
-    2. If relevant month is '0' -> Unpaid.
-    3. If relevant month is '1' -> Loop forward to find the FIRST unpaid month.
+    Payment rules:
+    - Month value "1" means PAID for that month. "0" means UNPAID.
+    - If current month is UNPAID -> service is unpaid.
+    - If current month is PAID, but today is after `date` and next month is UNPAID -> unpaid.
+    - If current month is PAID and next month is PAID -> service is paid.
     """
     payments = user_data.get("payments", {})
 
-    # Get user's billing day
     try:
         due_day = int(user_data.get("date", "1"))
     except (ValueError, TypeError):
         due_day = 1
 
-    month_map = {
-        1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
-        7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
-    }
-
     now = datetime.now()
-    check_year = now.year
-    check_month_idx = now.month
+    curr_year = now.year
+    curr_month_idx = now.month
     curr_day = now.day
 
-    # A. Determine which month determines immediate access
-    # If we are past the due date, we check the NEXT month for access.
-    if curr_day > due_day:
-        check_month_idx += 1
-        if check_month_idx > 12:
-            check_month_idx = 1
-            check_year += 1
-
-    # B. Check status of that specific 'access' month
-    check_month_key = month_map[check_month_idx]
-    status = str(payments.get(str(check_year), {}).get(check_month_key, "0"))
-
-    if status == "0":
+    curr_status = _get_month_status(payments, curr_year, curr_month_idx)
+    if curr_status == UNPAID_STATUS:
         return msg_unpaid, None
 
-    # C. If we are here, user has access. Now find the Next Payment Date.
-    # We start searching from the month AFTER the one we just confirmed.
+    next_year = curr_year + (1 if curr_month_idx == 12 else 0)
+    next_month_idx = 1 if curr_month_idx == 12 else curr_month_idx + 1
+    next_status = _get_month_status(payments, next_year, next_month_idx)
 
-    search_month_idx = check_month_idx + 1
-    search_year = check_year
+    if curr_day > due_day and next_status == UNPAID_STATUS:
+        return msg_unpaid, None
 
-    # Normalize start date if month overflowed
-    if search_month_idx > 12:
-        search_month_idx = 1
-        search_year += 1
+    # Determine next unpaid date for info
+    search_year = curr_year
+    search_month_idx = curr_month_idx
+    if curr_day > due_day:
+        search_year = next_year
+        search_month_idx = next_month_idx
 
     next_unpaid_str = None
-
-    # Loop through years (Extend range if you add 2029, 2030 to JSON)
     for y in range(search_year, 2030):
-        # For the starting year, start from search_month_idx. For later years, start from Jan (1).
         m_start = search_month_idx if y == search_year else 1
-
         for m in range(m_start, 13):
-            m_key = month_map[m]
-
-            # Look up in JSON. Default to '0' (Unpaid) if year/month missing
-            val = str(payments.get(str(y), {}).get(m_key, "0"))
-
-
-            if val == "0":
-                # Found the first unpaid month (e.g., Feb)
-                # But we want to show the expiration date, which is in the PREVIOUS month (e.g., Jan)
-
+            if _get_month_status(payments, y, m) == UNPAID_STATUS:
                 prev_m = m - 1
                 prev_y = y
-
-                # Handle year rollback (if Jan is unpaid, previous is Dec of last year)
                 if prev_m < 1:
                     prev_m = 12
                     prev_y -= 1
-
-                prev_key = month_map[prev_m]
-
+                prev_key = MONTH_MAP[prev_m]
                 next_unpaid_str = f"{due_day} {prev_key} {prev_y}"
                 break
-
-            # if val == "0":
-            #     # Found the first unpaid month!
-            #     next_unpaid_str = f"{due_day} {m_key} {y}"
-            #     break
-
         if next_unpaid_str:
             break
 
-    # D. Return result
     if next_unpaid_str:
         return msg_paid, next_unpaid_str
-    else:
-        # Loop finished and no "0" was found.
-        # This means they are paid up to the end of your configured years.
-        return msg_paid, msg_paid_full
+    return msg_paid, msg_paid_full
 
 # def get_payment_status(user_data):
 #     """

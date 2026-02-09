@@ -1,94 +1,47 @@
-from module import find_child
+from module import list_users_from_stats, get_online_devices, XRAY_MAX_DEVICES
 from subprocess import run
-from sys import argv,exit
-from json import load,loads
+from sys import argv, exit
 from time import sleep
 
-MAX_SESSIONS=2
-config_file='config.json'
-log_file='check.log'
-server='127.0.0.1'
-port='10002'
+POLL_SECONDS = 3
 
-def check_user_sessions(inbound_tag,emails):
-    global server
-    global port
-    global log_file
+def delete_user(email):
+    output = run(["python3", "delete_user.py", email], capture_output=True, text=True)
+    if output.returncode != 0:
+        print(output.stderr.strip() or f"error: failed to remove {email}")
+        return False
+    print(output.stdout.strip() or f"deleted user {email}")
+    return True
 
-    # write log
-    #log=open(log_file,'a+')
-    
+def check_user_sessions():
+    last_devices = {}
+
     while True:
+        emails = list_users_from_stats()
+        current_set = set(emails)
+
+        for email in list(last_devices.keys()):
+            if email not in current_set:
+                last_devices.pop(email, None)
+
         for email in emails:
-            output=run(f'./xray api statsonline --server={server}:{port} -email {email}',shell=True,capture_output=True,text=True)
-            if output.returncode!=0:
-                continue
-            data=loads(output.stdout.strip())
-            stat=find_child(data,'stat')
-            #log.write(str(stat)+'\n')
-            print(stat)
+            devices = get_online_devices(email)
+            last_devices.setdefault(email, set())
 
-            # check if online sessions > max sessions
-            if stat.get('value')>MAX_SESSIONS:
-                output=run(f'./xray api statsonlineiplist --server={server}:{port} -email {email}',shell=True,capture_output=True,text=True)
-                if output.returncode!=0:
-                    #log.write(f'couldnt get ips for {email}')
-                    print(f'couldnt get ips for {email}')
+            if len(devices) > XRAY_MAX_DEVICES and len(last_devices[email]) <= XRAY_MAX_DEVICES:
+                print(f"{email} exceeded {XRAY_MAX_DEVICES} devices: {sorted(devices)}")
+                if delete_user(email):
+                    last_devices.pop(email, None)
                     continue
-                data=loads(output.stdout.strip())
-                ips=find_child(data,'ips')
-                #log.write(str(ips)+'\n')
-                print(ips)
-                
-                # block the last ip(s)
-                count=0
-                for ip in ips:
-                    count+=1
-                    if count>MAX_SESSIONS:
-                        output=run(f'./xray api sib --server={server}:{port} -outbound=block -inbound={inbound_tag} {ip}',shell=True,capture_output=True,text=True)
-                        #if 'duplicate ruleTag sourceIpBlock' in output.stderr:
-                        #    pass
-                        if output.returncode!=0:
-                            #log.write(f'couldnt block {ip} for {email}')
-                            print(f'couldnt block {ip} for {email}')
-                        else:
-                            #log.write(f'blocked {ip} from user {email}')
-                            print(f'blocked {ip} from user {email}')
 
+            last_devices[email] = devices
             sleep(0.1)
-        sleep(3)
 
-def get_emails(inbound_tag,emails):
-    global config_file
-    found_inbound=0
-
-    with open(config_file,'r') as read:
-        data=load(read)
-
-    inbounds=find_child(data,'inbounds')
-    for inbound in inbounds:
-        values=list(inbound.values())
-        if values[0]!=inbound_tag:
-            continue
-        found_inbound=1
-
-        # get clients
-        settings=find_child(inbound,'settings')
-        clients=find_child(settings,'clients')
-
-        for client in clients:
-            emails.append(client.get('email'))
-
-    if not found_inbound:
-        print('no such inbound')
-        exit(1)
+        sleep(POLL_SECONDS)
 
 if __name__=='__main__':
-    if len(argv)<2:
-        print(f'usage: python3 {argv[0]} <inbound_tag>')
+    if len(argv) > 1:
+        print(f'usage: python3 {argv[0]}')
         exit(1)
 
-    inbound_tag=argv[1]
-    emails=[]
-    get_emails(inbound_tag,emails)
-    check_user_sessions(inbound_tag,emails)
+    check_user_sessions()
