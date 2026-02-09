@@ -128,6 +128,17 @@ def mark_current_month_paid(all_users_data, user_id_str, user_name):
 
 # --- LOGIC HELPERS ---
 
+PAID_STATUS = "1"
+UNPAID_STATUS = "0"
+
+MONTH_MAP = {
+    1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
+    7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
+}
+
+def _get_month_status(payments, year, month_idx):
+    return str(payments.get(str(year), {}).get(MONTH_MAP[month_idx], UNPAID_STATUS))
+
 def get_payment_status(user_data):
     """
     1. If current month is unpaid -> Unpaid.
@@ -139,7 +150,6 @@ def get_payment_status(user_data):
     payments = user_data.get("payments", {})
     logger.debug("Calculating payment status for user data keys: %s", list(user_data.keys()))
 
-    # Get user's billing day
     try:
         due_day = int(user_data.get("date", 1))
     except (ValueError, TypeError):
@@ -187,18 +197,16 @@ def get_payment_status(user_data):
     search_month_idx = curr_month_idx + 1
     search_year = curr_year
 
-    # Normalize start date if month overflowed
-    if search_month_idx > 12:
-        search_month_idx = 1
-        search_year += 1
+    # Determine next unpaid date for info
+    search_year = curr_year
+    search_month_idx = curr_month_idx
+    if curr_day > due_day:
+        search_year = next_year
+        search_month_idx = next_month_idx
 
     next_unpaid_str = None
-
-    # Loop through years (Extend range if you add 2029, 2030 to JSON)
     for y in range(search_year, 2030):
-        # For the starting year, start from search_month_idx. For later years, start from Jan (1).
         m_start = search_month_idx if y == search_year else 1
-
         for m in range(m_start, 13):
             m_key = MONTH_MAP[m]
 
@@ -213,8 +221,6 @@ def get_payment_status(user_data):
 
                 prev_m = m - 1
                 prev_y = y
-
-                # Handle year rollback (if Jan is unpaid, previous is Dec of last year)
                 if prev_m < 1:
                     prev_m = 12
                     prev_y -= 1
@@ -223,16 +229,9 @@ def get_payment_status(user_data):
 
                 next_unpaid_str = f"{due_day} {prev_key} {prev_y}"
                 break
-
-            # if val == "0":
-            #     # Found the first unpaid month!
-            #     next_unpaid_str = f"{due_day} {m_key} {y}"
-            #     break
-
         if next_unpaid_str:
             break
 
-    # D. Return result
     if next_unpaid_str:
         logger.debug("Next unpaid month resolved to %s", next_unpaid_str)
         return msg_paid, next_unpaid_str
