@@ -3,9 +3,11 @@
 
 # PATCH
 *.patch
+*.old
 
 # CONFIGS
 config.json
+users.json
 
 # FOLDERS
 __pycache__*/
