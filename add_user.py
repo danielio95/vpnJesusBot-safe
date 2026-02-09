@@ -19,7 +19,6 @@ IP = getenv("XRAY_PUBLIC_IP", "x.x.x.x")
 PORT = getenv("XRAY_PUBLIC_PORT", "443")
 PBK = getenv("XRAY_REALITY_PBK", "x")
 SNI = getenv("XRAY_REALITY_SNI", "x")
-REALITY_SID = getenv("XRAY_REALITY_SID")
 INBOUND_LISTEN = getenv("XRAY_INBOUND_LISTEN", "0.0.0.0")
 INBOUND_PORT = int(getenv("XRAY_INBOUND_PORT", "8443"))
 INBOUND_PROTOCOL = getenv("XRAY_INBOUND_PROTOCOL", "vless")
@@ -50,7 +49,7 @@ def build_add_user_payload(email, user_id):
 
 def add_user(email):
     user_id = str(uuid4())
-    sid = REALITY_SID or str(urandom(8).hex())
+    sid = str(urandom(8).hex())
     logger.debug("Adding user email=%s user_id=%s", email, user_id)
     payload = build_add_user_payload(email, user_id)
     temp_file = None
