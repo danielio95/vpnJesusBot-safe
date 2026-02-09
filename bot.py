@@ -27,11 +27,11 @@ logger = getLogger(__name__)
 # --- MESSAGES ---
 
 msg_error = "Возникла проблема. Пожалуйста, сообщите администратору."
-msg_paid_full = "Оплачено до 2026 года."
+msg_paid_full = "Оплачено до конца 2026 года."
 msg_paid = "Всё готово. Оплата не требуется."
 msg_unpaid = "Для дальнейшего использования VPN необходимо внести оплату."
 msg_noID = "Мне не удалось найти ваш ID в базе данных."
-msg_question = "Пожалуйста, задайте свой вопрос, ответ появится здесь в течение 24 часов."
+msg_question = "Пожалуйста, задайте свой вопрос, ответ появится здесь в течение 12 часов."
 msg_question_sent = "Вопрос отправлен! Ожидайте ответа."
 msg_menu = "Выберите действие:"
 msg_next_payment = "Следующий платеж в"
@@ -40,13 +40,15 @@ admin_sent = "Ответ отправлен пользователю "
 admin_id_error = "В сообщении не удалось найти ID пользователя или ID сообщения."
 admin_error = "Ошибка при отправке ответа: "
 
+MSG = "telegram:@vpnjesusbot"
+
 # --- BUTTONS ---
 
 btn_1 = "Проверить мой платеж"
 btn_2 = "Задать вопрос"
 btn_3 = "Получить конфиг"
-btn_instruction = "инструкция"
-btn_next = "дальше"
+btn_instruction = "Инструкция"
+btn_next = "Дальше ➡️"
 
 instruction_platforms = {
     "ios": "ios",
@@ -184,7 +186,7 @@ def build_vless_config(user_id, sid):
     return (
         f"vless://{user_id}@{IP}:{PORT}"
         f"?security=reality&encryption=none&pbk={PBK}&headerType=none"
-        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#xray"
+        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#{MSG}"
     )
 
 def ensure_year(payments, year):
