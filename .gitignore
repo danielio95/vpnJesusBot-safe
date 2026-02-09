@@ -1,2 +1,12 @@
 # LOG
 *.log*
+
+# PATCH
+*.patch
+
+# CONFIGS
+config.json
+
+# FOLDERS
+__pycache__*/
+old*/
