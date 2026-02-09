@@ -1,12 +1,11 @@
 from os import getenv, path
-from json import load, dump, JSONDecodeError
-from logging import basicConfig, DEBUG
-import logging
-from logging.handlers import RotatingFileHandler
 from datetime import datetime
+from json import load, dump, JSONDecodeError
+from logging.handlers import RotatingFileHandler
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from logging import basicConfig, DEBUG, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
 # --- CONFIGURATION ---
 ADMIN_ID = getenv("TELEGRAM_ADMIN_ID")
@@ -21,7 +20,7 @@ basicConfig(
         RotatingFileHandler("output.log", maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
     ]
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 # --- MESSAGES ---
 

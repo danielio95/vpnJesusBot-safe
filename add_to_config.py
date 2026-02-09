@@ -1,8 +1,7 @@
-import argparse
-import sys
-from logging import basicConfig, DEBUG
 import logging
-
+from sys import exit
+from argparse import ArgumentParser
+from logging import basicConfig, DEBUG
 from payment_config import (
     apply_duration_logic,
     apply_manual_paid,
@@ -18,7 +17,7 @@ basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
-    parser = argparse.ArgumentParser(description="Add user with duration and advanced manual selection.")
+    parser = ArgumentParser(description="Add user with duration and advanced manual selection.")
     
     parser.add_argument("--name", required=True, help="Name of the user")
     parser.add_argument("--id", required=True, help="Unique User ID")
@@ -42,7 +41,7 @@ def main():
     if args.id in data:
         logger.error("Duplicate user id detected: %s", args.id)
         print(f"Error: User ID '{args.id}' already exists.")
-        sys.exit(1)
+        exit(1)
 
     # 3. Initialize Structure
     payment_structure = create_empty_payments()

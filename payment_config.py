@@ -1,14 +1,13 @@
-import json
-import os
+from os import path
+from json import loads, dump
 from datetime import datetime
-from logging import basicConfig, DEBUG
-import logging
+from logging import basicConfig, DEBUG, getLogger
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=DEBUG,
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 FILENAME = "data.json"
 ALLOWED_YEARS = ["2025", "2026", "2027", "2028"]
@@ -98,14 +97,14 @@ def apply_manual_paid(structure, paid_args):
 
 def load_data(filename=FILENAME):
     data = {}
-    if os.path.exists(filename):
+    if path.exists(filename):
         try:
             with open(filename, "r", encoding="utf-8") as file:
                 content = file.read().strip()
                 if content:
-                    data = json.loads(content)
+                    data = loads(content)
                     logger.debug("Loaded data entries=%s", len(data))
-        except json.JSONDecodeError:
+        except JSONDecodeError:
             logger.exception("JSON file corrupt: %s", filename)
             print("Error: JSON file corrupt. Starting fresh.")
     return data
@@ -113,4 +112,4 @@ def load_data(filename=FILENAME):
 def save_data(data, filename=FILENAME):
     logger.debug("Saving data entries=%s filename=%s", len(data), filename)
     with open(filename, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=4)
+        dump(data, file, ensure_ascii=False, indent=4)

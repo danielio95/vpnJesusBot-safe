@@ -1,15 +1,14 @@
-import json
-from os import getenv
-from subprocess import run, CalledProcessError
 from sys import exit
-from logging import basicConfig, DEBUG
-import logging
+from os import getenv
+from logging import basicConfig, DEBUG, getLogger
+from json import JSONDecodeError, loads
+from subprocess import run, CalledProcessError
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=DEBUG,
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 def restart_xray():
     try:
@@ -51,8 +50,8 @@ def load_xray_api_json(args):
 
     try:
         logger.debug("Parsing xray api json output")
-        return json.loads(output)
-    except json.JSONDecodeError:
+        return loads(output)
+    except JSONDecodeError:
         logger.exception("Invalid json from xray api")
         print("error: invalid json from xray api")
         return None

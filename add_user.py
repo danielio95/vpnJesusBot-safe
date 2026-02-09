@@ -1,10 +1,10 @@
+from module import API_PORT, API_SERVER, run_xray_api
 from logging import basicConfig, DEBUG, getLogger
 from tempfile import NamedTemporaryFile
 from os import getenv, urandom, remove
 from sys import argv, exit
 from uuid import uuid4
 from json import dump
-from module import API_PORT, API_SERVER, run_xray_api
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

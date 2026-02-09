@@ -1,7 +1,6 @@
-import argparse
-import sys
-from logging import basicConfig, DEBUG
-import logging
+from sys import exit
+from argparse import ArgumentParser
+from logging import basicConfig, DEBUG, getLogger
 
 from payment_config import (
     apply_duration_logic,
@@ -15,10 +14,10 @@ basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=DEBUG,
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 def main():
-    parser = argparse.ArgumentParser(description="Update existing user data in data.json.")
+    parser = ArgumentParser(description="Update existing user data in data.json.")
 
     parser.add_argument("--name", required=True, help="Name of the user")
     parser.add_argument("--id", required=True, help="Unique User ID")
@@ -36,7 +35,7 @@ def main():
     if args.id not in data:
         logger.error("User id not found for update: %s", args.id)
         print(f"Error: User ID '{args.id}' does not exist.")
-        sys.exit(1)
+        exit(1)
 
     payment_structure = create_empty_payments()
 

@@ -1,15 +1,13 @@
-import json
+from json import dump
 from datetime import datetime
-from logging import basicConfig, DEBUG
-import logging
-
+from logging import basicConfig, DEBUG, getLogger
 from module import API_PORT, API_SERVER, get_users_from_api
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=DEBUG,
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 BACKUP_FILE = "users_backup.json"
 
@@ -23,7 +21,7 @@ def backup_users():
 
     logger.debug("Writing backup file %s", BACKUP_FILE)
     with open(BACKUP_FILE, "w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False, indent=4)
+        dump(payload, file, ensure_ascii=False, indent=4)
 
     print(f"backup saved to {BACKUP_FILE} ({len(users)} users)")
     logger.debug("Backup complete users=%s", len(users))

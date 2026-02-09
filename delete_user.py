@@ -1,7 +1,6 @@
 from os import getenv
 from sys import argv, exit
-from logging import basicConfig, DEBUG
-import logging
+from logging import basicConfig, DEBUG, getLogger
 
 from module import API_PORT, API_SERVER, run_xray_api
 
@@ -9,7 +8,7 @@ basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=DEBUG,
 )
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
 
