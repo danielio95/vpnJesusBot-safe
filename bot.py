@@ -1,4 +1,4 @@
-from os import getenv, path
+from os import getenv, path, listdir
 from datetime import datetime
 from json import load, dump, JSONDecodeError
 from logging.handlers import RotatingFileHandler
@@ -43,6 +43,16 @@ admin_error = "Ошибка при отправке ответа: "
 btn_1 = "Проверить мой платеж"
 btn_2 = "Задать вопрос"
 btn_3 = "Получить конфиг"
+btn_instruction = "инструкция"
+btn_next = "дальше"
+
+instruction_platforms = {
+    "ios": "ios",
+    "android": "android",
+    "windows": "windows",
+    "macos": "macos",
+    "linux": "linux",
+}
 
 MONTH_MAP = {
     1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
@@ -240,6 +250,61 @@ def get_payment_status(user_data):
         logger.debug("No unpaid months found; returning paid full.")
         return msg_paid, msg_paid_full
 
+
+def _get_instruction_steps(platform_name):
+    base_path = path.dirname(__file__)
+    platform_path = path.join(base_path, platform_name)
+    if not path.isdir(platform_path):
+        return []
+    steps = []
+    for entry in listdir(platform_path):
+        step_path = path.join(platform_path, entry)
+        if not path.isdir(step_path):
+            continue
+        if not entry.startswith("step"):
+            continue
+        step_number_str = entry.replace("step", "", 1)
+        if not step_number_str.isdigit():
+            continue
+        steps.append((int(step_number_str), entry))
+    steps.sort(key=lambda item: item[0])
+    return [entry for _, entry in steps]
+
+
+def _get_step_files(step_path):
+    files = []
+    for entry in listdir(step_path):
+        entry_path = path.join(step_path, entry)
+        if path.isfile(entry_path):
+            files.append(entry_path)
+    return sorted(files)
+
+
+async def _send_instruction_step(update: Update, platform_name: str, step_folder: str):
+    base_path = path.dirname(__file__)
+    step_path = path.join(base_path, platform_name, step_folder)
+    if not path.isdir(step_path):
+        await update.message.reply_text(msg_error)
+        return
+
+    files = _get_step_files(step_path)
+    if not files:
+        await update.message.reply_text(msg_error)
+        return
+
+    image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    text_exts = {".txt", ".text"}
+    for entry_path in files:
+        _, ext = path.splitext(entry_path.lower())
+        if ext in text_exts:
+            with open(entry_path, "r", encoding="utf-8") as handle:
+                content = handle.read().strip()
+            if content:
+                await update.message.reply_text(content)
+        elif ext in image_exts:
+            with open(entry_path, "rb") as handle:
+                await update.message.reply_photo(photo=handle)
+
 # def get_payment_status(user_data):
 #     """
 #     Checks the 'Relevant' month based on the due date.
@@ -370,12 +435,13 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.debug("Loaded %s users from bot_data", len(all_users_data))
 
     # Define the main keyboard menu
-    keyboard = [[btn_1], [btn_3], [btn_2]]
+    keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     # --- LOGIC 1: CHECK PAYMENT ---
     if user_text == btn_1:
         context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = False
 
         found_user = all_users_data.get(user_id_str)
 
@@ -435,12 +501,66 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2: TRIGGER QUESTION MODE ---
     elif user_text == btn_2:
         context.user_data['awaiting_question'] = True
+        context.user_data['instruction_mode'] = False
         logger.debug("User %s entered question mode", user_id_str)
         await update.message.reply_text(msg_question, reply_markup=reply_markup)
+
+    # --- LOGIC 2.4: INSTRUCTION MENU ---
+    elif user_text == btn_instruction:
+        context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = True
+        context.user_data['instruction_platform'] = None
+        context.user_data['instruction_step'] = 0
+        platform_buttons = [[name] for name in instruction_platforms.keys()]
+        instruction_markup = ReplyKeyboardMarkup(platform_buttons, resize_keyboard=True)
+        await update.message.reply_text(msg_menu, reply_markup=instruction_markup)
+
+    elif context.user_data.get('instruction_mode') is True and user_text in instruction_platforms:
+        context.user_data['awaiting_question'] = False
+        platform_key = instruction_platforms[user_text]
+        steps = _get_instruction_steps(platform_key)
+        if not steps:
+            context.user_data['instruction_mode'] = False
+            context.user_data['instruction_platform'] = None
+            context.user_data['instruction_step'] = 0
+            await update.message.reply_text(msg_error, reply_markup=reply_markup)
+        else:
+            context.user_data['instruction_platform'] = platform_key
+            context.user_data['instruction_step'] = 0
+            await _send_instruction_step(update, platform_key, steps[0])
+            context.user_data['instruction_step'] = 1
+            next_markup = ReplyKeyboardMarkup([[btn_next]], resize_keyboard=True)
+            await update.message.reply_text(msg_menu, reply_markup=next_markup)
+
+    elif context.user_data.get('instruction_mode') is True and user_text == btn_next:
+        platform_key = context.user_data.get('instruction_platform')
+        if not platform_key:
+            context.user_data['instruction_mode'] = False
+            await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+        else:
+            steps = _get_instruction_steps(platform_key)
+            step_index = context.user_data.get('instruction_step', 0)
+            if step_index >= len(steps):
+                context.user_data['instruction_mode'] = False
+                context.user_data['instruction_platform'] = None
+                context.user_data['instruction_step'] = 0
+                await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+            else:
+                await _send_instruction_step(update, platform_key, steps[step_index])
+                context.user_data['instruction_step'] = step_index + 1
+                if context.user_data['instruction_step'] >= len(steps):
+                    context.user_data['instruction_mode'] = False
+                    context.user_data['instruction_platform'] = None
+                    context.user_data['instruction_step'] = 0
+                    await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+                else:
+                    next_markup = ReplyKeyboardMarkup([[btn_next]], resize_keyboard=True)
+                    await update.message.reply_text(msg_menu, reply_markup=next_markup)
 
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
         context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = False
         user_name = update.effective_user.first_name
         user_id, sid = add_xray_user(user_id_str)
         if not user_id or not sid:
@@ -491,6 +611,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- DEFAULT: SHOW MENU ---
     else:
         logger.debug("Fallback to menu for user_id=%s", user_id_str)
+        context.user_data['instruction_mode'] = False
         await update.message.reply_text(msg_menu, reply_markup=reply_markup)
 
 
