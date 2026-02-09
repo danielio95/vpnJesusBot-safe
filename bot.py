@@ -71,15 +71,17 @@ def load_user_data(filename=DATA_FILE):
 
 def get_payment_status(user_data):
     """
-    1. Determine 'relevant' month (Current vs Next based on due date).
-    2. If relevant month is '0' -> Unpaid.
-    3. If relevant month is '1' -> Loop forward to find the FIRST unpaid month.
+    1. If current month is unpaid -> Unpaid.
+    2. If current month is paid and today <= due_day -> Paid.
+    3. If current month is paid and today > due_day:
+       - If next month is unpaid -> Unpaid.
+       - If next month is paid -> Paid.
     """
     payments = user_data.get("payments", {})
 
     # Get user's billing day
     try:
-        due_day = int(user_data.get("date", "1"))
+        due_day = int(user_data.get("date", 1))
     except (ValueError, TypeError):
         due_day = 1
 
@@ -89,30 +91,31 @@ def get_payment_status(user_data):
     }
 
     now = datetime.now()
-    check_year = now.year
-    check_month_idx = now.month
+    curr_year = now.year
+    curr_month_idx = now.month
     curr_day = now.day
 
-    # A. Determine which month determines immediate access
-    # If we are past the due date, we check the NEXT month for access.
-    if curr_day > due_day:
-        check_month_idx += 1
-        if check_month_idx > 12:
-            check_month_idx = 1
-            check_year += 1
+    curr_month_key = month_map[curr_month_idx]
+    curr_status = str(payments.get(str(curr_year), {}).get(curr_month_key, "0"))
 
-    # B. Check status of that specific 'access' month
-    check_month_key = month_map[check_month_idx]
-    status = str(payments.get(str(check_year), {}).get(check_month_key, "0"))
-
-    if status == "0":
+    if curr_status == "0":
         return msg_unpaid, None
 
-    # C. If we are here, user has access. Now find the Next Payment Date.
-    # We start searching from the month AFTER the one we just confirmed.
+    next_month_idx = curr_month_idx + 1
+    next_year = curr_year
+    if next_month_idx > 12:
+        next_month_idx = 1
+        next_year += 1
+    next_month_key = month_map[next_month_idx]
+    next_status = str(payments.get(str(next_year), {}).get(next_month_key, "0"))
 
-    search_month_idx = check_month_idx + 1
-    search_year = check_year
+    if curr_day > due_day and next_status == "0":
+        return msg_unpaid, None
+
+    # If we are here, user has access. Now find the Next Payment Date.
+    # We start searching from the month AFTER the current month.
+    search_month_idx = curr_month_idx + 1
+    search_year = curr_year
 
     # Normalize start date if month overflowed
     if search_month_idx > 12:

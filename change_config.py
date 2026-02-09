@@ -10,54 +10,43 @@ from payment_config import (
 )
 
 def main():
-    parser = argparse.ArgumentParser(description="Add user with duration and advanced manual selection.")
-    
+    parser = argparse.ArgumentParser(description="Update existing user data in data.json.")
+
     parser.add_argument("--name", required=True, help="Name of the user")
     parser.add_argument("--id", required=True, help="Unique User ID")
     parser.add_argument("--date", required=True, help="Date value")
-    
-    # Duration argument (Optional, defaults to 0 if not provided)
     parser.add_argument("--months", type=int, default=0, choices=range(1, 37),
                         help="Auto-fill N months starting from today (1-36)")
-
-    # Advanced Paid argument
-    parser.add_argument("--paid", nargs='+', 
+    parser.add_argument("--paid", nargs='+',
                         help="Manual overrides. Supports lists '2025:1,3' and ranges '2026:1-5'")
 
     args = parser.parse_args()
 
-    # 1. Load Data
     data = load_data()
 
-    # 2. Check Duplicates
-    if args.id in data:
-        print(f"Error: User ID '{args.id}' already exists.")
+    if args.id not in data:
+        print(f"Error: User ID '{args.id}' does not exist.")
         sys.exit(1)
 
-    # 3. Initialize Structure
     payment_structure = create_empty_payments()
 
-    # 4. Apply Logic
     if args.months > 0:
         apply_duration_logic(payment_structure, args.months)
-    
+
     if args.paid:
         apply_manual_paid(payment_structure, args.paid)
 
-    # 5. Construct & Save
-    new_entry = {
+    data[args.id] = {
         "name": args.name,
         "date": int(args.date),
-        "payments": payment_structure
+        "payments": payment_structure,
     }
 
-    data[args.id] = new_entry
-    
     try:
         save_data(data)
-        print(f"Success: Added User ID '{args.id}' ({args.name}).")
-    except Exception as e:
-        print(f"Error saving file: {e}")
+        print(f"Success: Updated User ID '{args.id}' ({args.name}).")
+    except Exception as error:
+        print(f"Error saving file: {error}")
 
 if __name__ == "__main__":
     main()

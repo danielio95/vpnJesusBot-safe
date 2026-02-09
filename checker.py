@@ -1,94 +1,41 @@
-from module import find_child
 from subprocess import run
-from sys import argv,exit
-from json import load,loads
+from sys import argv, exit
 from time import sleep
 
-MAX_SESSIONS=2
-config_file='config.json'
-log_file='check.log'
-server='127.0.0.1'
-port='10002'
+from module import API_PORT, API_SERVER, get_user_connections, get_users_from_api
 
-def check_user_sessions(inbound_tag,emails):
-    global server
-    global port
-    global log_file
+MAX_DEVICES = 2
+POLL_INTERVAL = 3
 
-    # write log
-    #log=open(log_file,'a+')
-    
+def delete_user(email):
+    run(["python3", "delete_user.py", email], check=False)
+
+def monitor_sessions():
+    active_connections = {}
+    removed_users = set()
+
     while True:
-        for email in emails:
-            output=run(f'./xray api statsonline --server={server}:{port} -email {email}',shell=True,capture_output=True,text=True)
-            if output.returncode!=0:
-                continue
-            data=loads(output.stdout.strip())
-            stat=find_child(data,'stat')
-            #log.write(str(stat)+'\n')
-            print(stat)
+        emails = get_users_from_api(API_SERVER, API_PORT)
 
-            # check if online sessions > max sessions
-            if stat.get('value')>MAX_SESSIONS:
-                output=run(f'./xray api statsonlineiplist --server={server}:{port} -email {email}',shell=True,capture_output=True,text=True)
-                if output.returncode!=0:
-                    #log.write(f'couldnt get ips for {email}')
-                    print(f'couldnt get ips for {email}')
-                    continue
-                data=loads(output.stdout.strip())
-                ips=find_child(data,'ips')
-                #log.write(str(ips)+'\n')
-                print(ips)
-                
-                # block the last ip(s)
-                count=0
-                for ip in ips:
-                    count+=1
-                    if count>MAX_SESSIONS:
-                        output=run(f'./xray api sib --server={server}:{port} -outbound=block -inbound={inbound_tag} {ip}',shell=True,capture_output=True,text=True)
-                        #if 'duplicate ruleTag sourceIpBlock' in output.stderr:
-                        #    pass
-                        if output.returncode!=0:
-                            #log.write(f'couldnt block {ip} for {email}')
-                            print(f'couldnt block {ip} for {email}')
-                        else:
-                            #log.write(f'blocked {ip} from user {email}')
-                            print(f'blocked {ip} from user {email}')
+        for email in emails:
+            connections = get_user_connections(email, API_SERVER, API_PORT)
+            active_connections[email] = set(connections)
+
+            connection_count = len(active_connections[email])
+            print(f"{email} -> {sorted(active_connections[email])}")
+
+            if connection_count > MAX_DEVICES and email not in removed_users:
+                print(f"too many devices for {email}, removing user")
+                delete_user(email)
+                removed_users.add(email)
 
             sleep(0.1)
-        sleep(3)
 
-def get_emails(inbound_tag,emails):
-    global config_file
-    found_inbound=0
+        sleep(POLL_INTERVAL)
 
-    with open(config_file,'r') as read:
-        data=load(read)
-
-    inbounds=find_child(data,'inbounds')
-    for inbound in inbounds:
-        values=list(inbound.values())
-        if values[0]!=inbound_tag:
-            continue
-        found_inbound=1
-
-        # get clients
-        settings=find_child(inbound,'settings')
-        clients=find_child(settings,'clients')
-
-        for client in clients:
-            emails.append(client.get('email'))
-
-    if not found_inbound:
-        print('no such inbound')
+if __name__ == "__main__":
+    if len(argv) > 1:
+        print(f"usage: python3 {argv[0]}")
         exit(1)
 
-if __name__=='__main__':
-    if len(argv)<2:
-        print(f'usage: python3 {argv[0]} <inbound_tag>')
-        exit(1)
-
-    inbound_tag=argv[1]
-    emails=[]
-    get_emails(inbound_tag,emails)
-    check_user_sessions(inbound_tag,emails)
+    monitor_sessions()
