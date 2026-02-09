@@ -5,6 +5,7 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 
 # --- CONFIGURATION ---
 ADMIN_ID = getenv("TELEGRAM_ADMIN_ID")
@@ -40,6 +41,12 @@ admin_error = "Ошибка при отправке ответа: "
 
 btn_1 = "Проверить мой платеж"
 btn_2 = "Задать вопрос"
+btn_3 = "Получить конфиг"
+
+MONTH_MAP = {
+    1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
+    7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
+}
 
 # --- DATA MANAGEMENT ---
 
@@ -58,14 +65,54 @@ def load_user_data(filename=DATA_FILE):
 
 # func for validating vpn after the payment
 
-# def save_bot_data(data, filename=DATA_FILE):
-#     """
-#     Saves the dictionary back to the JSON file.
-#     """
-#     base_path = path.dirname(__file__)
-#     file_path = path.join(base_path, filename)
-#     with open(file_path, 'w', encoding='utf-8') as f:
-#         dump(data, f, indent=4, ensure_ascii=False)
+def save_bot_data(data, filename=DATA_FILE):
+    """
+    Saves the dictionary back to the JSON file.
+    """
+    base_path = path.dirname(__file__)
+    file_path = path.join(base_path, filename)
+    with open(file_path, 'w', encoding='utf-8') as f:
+        dump(data, f, indent=4, ensure_ascii=False)
+
+def build_vless_config(user_id, sid):
+    return (
+        f"vless://{user_id}@{IP}:{PORT}"
+        f"?security=reality&encryption=none&pbk={PBK}&headerType=none"
+        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#xray"
+    )
+
+def ensure_year(payments, year):
+    year_key = str(year)
+    if year_key not in payments or not isinstance(payments[year_key], dict):
+        payments[year_key] = {}
+    for month in MONTH_MAP.values():
+        payments[year_key].setdefault(month, 0)
+
+def mark_current_month_paid(all_users_data, user_id_str, user_name):
+    now = datetime.now()
+    curr_year = now.year
+    curr_month_key = MONTH_MAP[now.month]
+    next_month_idx = now.month + 1
+    next_year = curr_year
+    if next_month_idx > 12:
+        next_month_idx = 1
+        next_year += 1
+    next_month_key = MONTH_MAP[next_month_idx]
+
+    user_entry = all_users_data.setdefault(
+        user_id_str,
+        {"name": user_name or "", "date": 1, "payments": {}}
+    )
+    if user_name and not user_entry.get("name"):
+        user_entry["name"] = user_name
+    user_entry.setdefault("date", 1)
+    user_entry.setdefault("payments", {})
+    payments = user_entry["payments"]
+
+    ensure_year(payments, curr_year)
+    ensure_year(payments, next_year)
+    payments[str(curr_year)][curr_month_key] = 1
+    payments[str(next_year)][next_month_key] = 0
 
 # --- LOGIC HELPERS ---
 
@@ -85,17 +132,12 @@ def get_payment_status(user_data):
     except (ValueError, TypeError):
         due_day = 1
 
-    month_map = {
-        1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
-        7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
-    }
-
     now = datetime.now()
     curr_year = now.year
     curr_month_idx = now.month
     curr_day = now.day
 
-    curr_month_key = month_map[curr_month_idx]
+    curr_month_key = MONTH_MAP[curr_month_idx]
     curr_status = str(payments.get(str(curr_year), {}).get(curr_month_key, "0"))
 
     if curr_status == "0":
@@ -106,7 +148,7 @@ def get_payment_status(user_data):
     if next_month_idx > 12:
         next_month_idx = 1
         next_year += 1
-    next_month_key = month_map[next_month_idx]
+    next_month_key = MONTH_MAP[next_month_idx]
     next_status = str(payments.get(str(next_year), {}).get(next_month_key, "0"))
 
     if curr_day > due_day and next_status == "0":
@@ -130,7 +172,7 @@ def get_payment_status(user_data):
         m_start = search_month_idx if y == search_year else 1
 
         for m in range(m_start, 13):
-            m_key = month_map[m]
+            m_key = MONTH_MAP[m]
 
             # Look up in JSON. Default to '0' (Unpaid) if year/month missing
             val = str(payments.get(str(y), {}).get(m_key, "0"))
@@ -148,7 +190,7 @@ def get_payment_status(user_data):
                     prev_m = 12
                     prev_y -= 1
 
-                prev_key = month_map[prev_m]
+                prev_key = MONTH_MAP[prev_m]
 
                 next_unpaid_str = f"{due_day} {prev_key} {prev_y}"
                 break
@@ -292,7 +334,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     all_users_data = context.bot_data.get('user_info', {})
 
     # Define the main keyboard menu
-    keyboard = [[btn_1], [btn_2]]
+    keyboard = [[btn_1], [btn_3], [btn_2]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     # --- LOGIC 1: CHECK PAYMENT ---
@@ -356,6 +398,31 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     elif user_text == btn_2:
         context.user_data['awaiting_question'] = True
         await update.message.reply_text( msg_question, reply_markup=reply_markup )
+
+    # --- LOGIC 2.5: GENERATE CONFIG ---
+    elif user_text == btn_3:
+        context.user_data['awaiting_question'] = False
+        user_name = update.effective_user.first_name
+        user_id, sid = add_xray_user(user_id_str)
+        if not user_id or not sid:
+            await update.message.reply_text(msg_error, reply_markup=reply_markup)
+            return
+
+        mark_current_month_paid(all_users_data, user_id_str, user_name)
+        save_bot_data(all_users_data)
+
+        config_string = build_vless_config(user_id, sid)
+        config_message = (
+            "Ваш конфиг готов:\n"
+            f"id: {user_id}\n"
+            f"shortid: {sid}\n"
+            f"pbk: {PBK}\n"
+            f"serverName: {SNI}\n"
+            f"ip: {IP}\n"
+            f"port: {PORT}\n"
+            f"config: {config_string}"
+        )
+        await update.message.reply_text(config_message, reply_markup=reply_markup)
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
