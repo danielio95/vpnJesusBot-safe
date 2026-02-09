@@ -18,7 +18,7 @@ basicConfig(
     level=DEBUG,
     handlers=[
         # Writes to output.log, max 5MB, keeps 2 old copies, utf-8 encoding
-        RotatingFileHandler("output.log", maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
+        RotatingFileHandler("log/output.log", maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
     ]
 )
 logger = getLogger(__name__)

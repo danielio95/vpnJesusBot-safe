@@ -11,11 +11,10 @@ config.json
 __pycache__*/
 old*/
 log*/
+xray*/
+
 android*/
 ios*/
 windows*/
 macos*/
 linux*/
-
-# BINS
-xray
