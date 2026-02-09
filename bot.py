@@ -1,10 +1,12 @@
 from os import getenv, path
 from json import load, dump, JSONDecodeError
-from logging import basicConfig, INFO, error
+from logging import basicConfig, DEBUG
+import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 
 # --- CONFIGURATION ---
 ADMIN_ID = getenv("TELEGRAM_ADMIN_ID")
@@ -13,12 +15,13 @@ DATA_FILE = "data.json"
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=INFO,
+    level=DEBUG,
     handlers=[
         # Writes to output.log, max 5MB, keeps 2 old copies, utf-8 encoding
         RotatingFileHandler("output.log", maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
     ]
 )
+logger = logging.getLogger(__name__)
 
 # --- MESSAGES ---
 
@@ -40,6 +43,12 @@ admin_error = "Ошибка при отправке ответа: "
 
 btn_1 = "Проверить мой платеж"
 btn_2 = "Задать вопрос"
+btn_3 = "Получить конфиг"
+
+MONTH_MAP = {
+    1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
+    7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
+}
 
 # --- DATA MANAGEMENT ---
 
@@ -50,22 +59,72 @@ def load_user_data(filename=DATA_FILE):
     """
     base_path = path.dirname(__file__)
     file_path = path.join(base_path, filename)
+    logger.debug("Loading user data from %s", file_path)
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            return load(f)
-    except (FileNotFoundError, JSONDecodeError):
+            data = load(f)
+            logger.debug("Loaded user data: %s users", len(data))
+            return data
+    except FileNotFoundError:
+        logger.exception("User data file not found: %s", file_path)
+        return {}
+    except JSONDecodeError:
+        logger.exception("User data file is invalid JSON: %s", file_path)
+        return {}
+    except Exception:
+        logger.exception("Unexpected error while loading user data: %s", file_path)
         return {}
 
 # func for validating vpn after the payment
 
-# def save_bot_data(data, filename=DATA_FILE):
-#     """
-#     Saves the dictionary back to the JSON file.
-#     """
-#     base_path = path.dirname(__file__)
-#     file_path = path.join(base_path, filename)
-#     with open(file_path, 'w', encoding='utf-8') as f:
-#         dump(data, f, indent=4, ensure_ascii=False)
+def save_bot_data(data, filename=DATA_FILE):
+    """
+    Saves the dictionary back to the JSON file.
+    """
+    base_path = path.dirname(__file__)
+    file_path = path.join(base_path, filename)
+    with open(file_path, 'w', encoding='utf-8') as f:
+        dump(data, f, indent=4, ensure_ascii=False)
+
+def build_vless_config(user_id, sid):
+    return (
+        f"vless://{user_id}@{IP}:{PORT}"
+        f"?security=reality&encryption=none&pbk={PBK}&headerType=none"
+        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#xray"
+    )
+
+def ensure_year(payments, year):
+    year_key = str(year)
+    if year_key not in payments or not isinstance(payments[year_key], dict):
+        payments[year_key] = {}
+    for month in MONTH_MAP.values():
+        payments[year_key].setdefault(month, 0)
+
+def mark_current_month_paid(all_users_data, user_id_str, user_name):
+    now = datetime.now()
+    curr_year = now.year
+    curr_month_key = MONTH_MAP[now.month]
+    next_month_idx = now.month + 1
+    next_year = curr_year
+    if next_month_idx > 12:
+        next_month_idx = 1
+        next_year += 1
+    next_month_key = MONTH_MAP[next_month_idx]
+
+    user_entry = all_users_data.setdefault(
+        user_id_str,
+        {"name": user_name or "", "date": 1, "payments": {}}
+    )
+    if user_name and not user_entry.get("name"):
+        user_entry["name"] = user_name
+    user_entry.setdefault("date", 1)
+    user_entry.setdefault("payments", {})
+    payments = user_entry["payments"]
+
+    ensure_year(payments, curr_year)
+    ensure_year(payments, next_year)
+    payments[str(curr_year)][curr_month_key] = 1
+    payments[str(next_year)][next_month_key] = 0
 
 # --- LOGIC HELPERS ---
 
@@ -82,17 +141,19 @@ def _get_month_status(payments, year, month_idx):
 
 def get_payment_status(user_data):
     """
-    Payment rules:
-    - Month value "1" means PAID for that month. "0" means UNPAID.
-    - If current month is UNPAID -> service is unpaid.
-    - If current month is PAID, but today is after `date` and next month is UNPAID -> unpaid.
-    - If current month is PAID and next month is PAID -> service is paid.
+    1. If current month is unpaid -> Unpaid.
+    2. If current month is paid and today <= due_day -> Paid.
+    3. If current month is paid and today > due_day:
+       - If next month is unpaid -> Unpaid.
+       - If next month is paid -> Paid.
     """
     payments = user_data.get("payments", {})
+    logger.debug("Calculating payment status for user data keys: %s", list(user_data.keys()))
 
     try:
-        due_day = int(user_data.get("date", "1"))
+        due_day = int(user_data.get("date", 1))
     except (ValueError, TypeError):
+        logger.exception("Invalid due day value: %s", user_data.get("date"))
         due_day = 1
 
     now = datetime.now()
@@ -100,16 +161,41 @@ def get_payment_status(user_data):
     curr_month_idx = now.month
     curr_day = now.day
 
-    curr_status = _get_month_status(payments, curr_year, curr_month_idx)
-    if curr_status == UNPAID_STATUS:
+    curr_month_key = MONTH_MAP[curr_month_idx]
+    curr_status = str(payments.get(str(curr_year), {}).get(curr_month_key, "0"))
+
+    logger.debug(
+        "Current payment status: year=%s month=%s due_day=%s status=%s",
+        curr_year,
+        curr_month_key,
+        due_day,
+        curr_status,
+    )
+    if curr_status == "0":
         return msg_unpaid, None
 
-    next_year = curr_year + (1 if curr_month_idx == 12 else 0)
-    next_month_idx = 1 if curr_month_idx == 12 else curr_month_idx + 1
-    next_status = _get_month_status(payments, next_year, next_month_idx)
+    next_month_idx = curr_month_idx + 1
+    next_year = curr_year
+    if next_month_idx > 12:
+        next_month_idx = 1
+        next_year += 1
+    next_month_key = MONTH_MAP[next_month_idx]
+    next_status = str(payments.get(str(next_year), {}).get(next_month_key, "0"))
 
-    if curr_day > due_day and next_status == UNPAID_STATUS:
+    logger.debug(
+        "Next month status: year=%s month=%s status=%s current_day=%s",
+        next_year,
+        next_month_key,
+        next_status,
+        curr_day,
+    )
+    if curr_day > due_day and next_status == "0":
         return msg_unpaid, None
+
+    # If we are here, user has access. Now find the Next Payment Date.
+    # We start searching from the month AFTER the current month.
+    search_month_idx = curr_month_idx + 1
+    search_year = curr_year
 
     # Determine next unpaid date for info
     search_year = curr_year
@@ -122,21 +208,38 @@ def get_payment_status(user_data):
     for y in range(search_year, 2030):
         m_start = search_month_idx if y == search_year else 1
         for m in range(m_start, 13):
-            if _get_month_status(payments, y, m) == UNPAID_STATUS:
+            m_key = MONTH_MAP[m]
+
+            # Look up in JSON. Default to '0' (Unpaid) if year/month missing
+            val = str(payments.get(str(y), {}).get(m_key, "0"))
+
+
+            logger.debug("Scan payment status: year=%s month=%s status=%s", y, m_key, val)
+            if val == "0":
+                # Found the first unpaid month (e.g., Feb)
+                # But we want to show the expiration date, which is in the PREVIOUS month (e.g., Jan)
+
                 prev_m = m - 1
                 prev_y = y
                 if prev_m < 1:
                     prev_m = 12
                     prev_y -= 1
+
                 prev_key = MONTH_MAP[prev_m]
+
                 next_unpaid_str = f"{due_day} {prev_key} {prev_y}"
                 break
         if next_unpaid_str:
             break
 
     if next_unpaid_str:
+        logger.debug("Next unpaid month resolved to %s", next_unpaid_str)
         return msg_paid, next_unpaid_str
-    return msg_paid, msg_paid_full
+    else:
+        # Loop finished and no "0" was found.
+        # This means they are paid up to the end of your configured years.
+        logger.debug("No unpaid months found; returning paid full.")
+        return msg_paid, msg_paid_full
 
 # def get_payment_status(user_data):
 #     """
@@ -256,12 +359,19 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     """
     user_id_str = str(update.effective_user.id)
     user_text = update.message.text
+    logger.debug(
+        "Incoming message: user_id=%s text=%s awaiting_question=%s",
+        user_id_str,
+        user_text,
+        context.user_data.get('awaiting_question'),
+    )
     
     # Retrieve the global data
     all_users_data = context.bot_data.get('user_info', {})
+    logger.debug("Loaded %s users from bot_data", len(all_users_data))
 
     # Define the main keyboard menu
-    keyboard = [[btn_1], [btn_2]]
+    keyboard = [[btn_1], [btn_3], [btn_2]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     # --- LOGIC 1: CHECK PAYMENT ---
@@ -271,6 +381,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         found_user = all_users_data.get(user_id_str)
 
         if found_user:
+            logger.debug("Found user data for user_id=%s", user_id_str)
             curr_status, next_info = get_payment_status(found_user)
 
             if curr_status == msg_paid:
@@ -282,6 +393,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 await update.message.reply_text(f"⚠️ {msg_unpaid}", reply_markup=reply_markup)
         else:
+            logger.debug("No user data found for user_id=%s", user_id_str)
             await update.message.reply_text(msg_noID, reply_markup=reply_markup)
 
     # if user_text == btn_1:
@@ -324,7 +436,33 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2: TRIGGER QUESTION MODE ---
     elif user_text == btn_2:
         context.user_data['awaiting_question'] = True
-        await update.message.reply_text( msg_question, reply_markup=reply_markup )
+        logger.debug("User %s entered question mode", user_id_str)
+        await update.message.reply_text(msg_question, reply_markup=reply_markup)
+
+    # --- LOGIC 2.5: GENERATE CONFIG ---
+    elif user_text == btn_3:
+        context.user_data['awaiting_question'] = False
+        user_name = update.effective_user.first_name
+        user_id, sid = add_xray_user(user_id_str)
+        if not user_id or not sid:
+            await update.message.reply_text(msg_error, reply_markup=reply_markup)
+            return
+
+        mark_current_month_paid(all_users_data, user_id_str, user_name)
+        save_bot_data(all_users_data)
+
+        config_string = build_vless_config(user_id, sid)
+        config_message = (
+            "Ваш конфиг готов:\n"
+            f"id: {user_id}\n"
+            f"shortid: {sid}\n"
+            f"pbk: {PBK}\n"
+            f"serverName: {SNI}\n"
+            f"ip: {IP}\n"
+            f"port: {PORT}\n"
+            f"config: {config_string}"
+        )
+        await update.message.reply_text(config_message, reply_markup=reply_markup)
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
@@ -343,11 +481,17 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             f"question:\n{user_text}"
         )
         
-        await context.bot.send_message(chat_id=ADMIN_ID, text=msg_to_admin)
-        await update.message.reply_text(msg_question_sent, reply_markup=reply_markup)
+        logger.debug("Forwarding user question to admin_id=%s", ADMIN_ID)
+        try:
+            await context.bot.send_message(chat_id=ADMIN_ID, text=msg_to_admin)
+            await update.message.reply_text(msg_question_sent, reply_markup=reply_markup)
+        except Exception:
+            logger.exception("Failed to forward question from user_id=%s to admin", user_id_str)
+            await update.message.reply_text(msg_error, reply_markup=reply_markup)
 
     # --- DEFAULT: SHOW MENU ---
     else:
+        logger.debug("Fallback to menu for user_id=%s", user_id_str)
         await update.message.reply_text(msg_menu, reply_markup=reply_markup)
 
 
@@ -357,6 +501,7 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """
     if update.message.reply_to_message:
         original_text = update.message.reply_to_message.text
+        logger.debug("Admin reply received. Original text: %s", original_text)
         
         try:
             # Parse User ID and Message ID from the helper text
@@ -376,23 +521,35 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 
                 # Send text as a REPLY to the specific message ID
                 await context.bot.send_message(
-                    chat_id=target_user_id, 
-                    text=admin_response, 
+                    chat_id=target_user_id,
+                    text=admin_response,
                     reply_to_message_id=target_msg_id
                 )
-                
-                await update.message.reply_text(admin_sent+target_user_id)
+                logger.debug(
+                    "Admin response forwarded to user_id=%s message_id=%s",
+                    target_user_id,
+                    target_msg_id,
+                )
+                await update.message.reply_text(admin_sent + target_user_id)
             else:
+                logger.debug("Admin reply missing user_id or message_id in original text.")
                 await update.message.reply_text(admin_id_error)
                 
-        except Exception as e:
-            error(admin_error+e)
+        except Exception:
+            logger.exception("Error while handling admin reply.")
             await update.message.reply_text(admin_error)
+    else:
+        logger.debug("Admin message without reply_to_message; ignoring.")
+
+
+async def handle_error(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.exception("Unhandled exception in bot update: %s", update)
 
 if __name__ == '__main__':
     if not BOT_TOKEN:
         print("error: TELEGRAM_BOT_TOKEN environment variable not set.")
         exit()
+    logger.debug("Starting bot with admin_id=%s data_file=%s", ADMIN_ID, DATA_FILE)
 
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
@@ -409,6 +566,7 @@ if __name__ == '__main__':
     
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_start_or_text)
     application.add_handler(echo_handler)
+    application.add_error_handler(handle_error)
     
     print("bot is running...")
     application.run_polling(poll_interval=0.0)

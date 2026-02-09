@@ -1,104 +1,21 @@
-import json
-import os
 import argparse
 import sys
-from datetime import datetime
+from logging import basicConfig, DEBUG
+import logging
 
-# Configuration constants
-FILENAME = "data.json"
-ALLOWED_YEARS = ["2025", "2026", "2027", "2028"]
-ALLOWED_MONTHS = [
-    "jan", "feb", "mar", "apr", "may", "jun", 
-    "jul", "aug", "sep", "oct", "nov", "dec"
-]
-PAID_STATUS = "1"
-UNPAID_STATUS = "0"
+from payment_config import (
+    apply_duration_logic,
+    apply_manual_paid,
+    create_empty_payments,
+    load_data,
+    save_data,
+)
 
-def create_empty_payments():
-    """Generates the structure with all '0's."""
-    structure = {}
-    for year in ALLOWED_YEARS:
-        structure[year] = {month: UNPAID_STATUS for month in ALLOWED_MONTHS}
-    return structure
-
-def apply_duration_logic(structure, months_count):
-    """
-    Sets 'months_count' number of months to '1' starting from current date.
-    """
-    if months_count < 1:
-        return
-
-    now = datetime.now()
-    current_year = now.year
-    current_month_idx = now.month - 1  # 0-11
-    
-    print(f"Auto-filling {months_count} months starting from {now.strftime('%b %Y')}...")
-
-    for i in range(months_count):
-        target_idx_total = current_month_idx + i
-        
-        # Calculate year offset and new month index
-        year_offset = target_idx_total // 12
-        final_month_idx = target_idx_total % 12
-        
-        final_year = str(current_year + year_offset)
-        final_month_name = ALLOWED_MONTHS[final_month_idx]
-
-        # Only set if the year exists in our allowed list
-        if final_year in structure:
-            structure[final_year][final_month_name] = PAID_STATUS
-
-def apply_manual_paid(structure, paid_args):
-    """
-    Parses strings like "2025:1,2,3" or "2027:1-10" and updates structure.
-    """
-    for item in paid_args:
-        try:
-            # 1. Check format Year:Data
-            if ':' not in item:
-                print(f"Warning: Skipping '{item}' (Missing colon). Format: Year:Indices")
-                continue
-            
-            year_str, data_str = item.split(':')
-
-            if year_str not in structure:
-                print(f"Warning: Year '{year_str}' not in allowed years. Skipping.")
-                continue
-
-            # 2. Split by comma first to separate groups (e.g. "1-5,7,9-11")
-            groups = data_str.split(',')
-            
-            for group in groups:
-                # 3. Check for Range (e.g., "1-10")
-                if '-' in group:
-                    try:
-                        start_s, end_s = group.split('-')
-                        start, end = int(start_s), int(end_s)
-                        
-                        # Loop through the range (inclusive)
-                        for val in range(start, end + 1):
-                            if 1 <= val <= 12:
-                                month_name = ALLOWED_MONTHS[val - 1]
-                                structure[year_str][month_name] = PAID_STATUS
-                            else:
-                                print(f"Warning: Month {val} in range {group} is out of bounds (1-12).")
-                    except ValueError:
-                        print(f"Warning: Invalid range format '{group}'. Use start-end (e.g., 1-10).")
-
-                # 4. Handle Single Number (e.g., "5")
-                else:
-                    try:
-                        val = int(group)
-                        if 1 <= val <= 12:
-                            month_name = ALLOWED_MONTHS[val - 1]
-                            structure[year_str][month_name] = PAID_STATUS
-                        else:
-                            print(f"Warning: Month {val} is out of bounds (1-12).")
-                    except ValueError:
-                        print(f"Warning: '{group}' is not a valid number.")
-                        
-        except Exception as e:
-            print(f"Error parsing item '{item}': {e}")
+basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=DEBUG,
+)
+logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Add user with duration and advanced manual selection.")
@@ -118,18 +35,12 @@ def main():
     args = parser.parse_args()
 
     # 1. Load Data
-    data = {}
-    if os.path.exists(FILENAME):
-        try:
-            with open(FILENAME, 'r', encoding='utf-8') as f:
-                content = f.read()
-                if content:
-                    data = json.loads(content)
-        except json.JSONDecodeError:
-            print("Error: JSON file corrupt. Starting fresh.")
+    logger.debug("Loading data for new user id=%s", args.id)
+    data = load_data()
 
     # 2. Check Duplicates
     if args.id in data:
+        logger.error("Duplicate user id detected: %s", args.id)
         print(f"Error: User ID '{args.id}' already exists.")
         sys.exit(1)
 
@@ -138,25 +49,28 @@ def main():
 
     # 4. Apply Logic
     if args.months > 0:
+        logger.debug("Applying duration logic months=%s", args.months)
         apply_duration_logic(payment_structure, args.months)
     
     if args.paid:
+        logger.debug("Applying manual paid overrides: %s", args.paid)
         apply_manual_paid(payment_structure, args.paid)
 
     # 5. Construct & Save
     new_entry = {
         "name": args.name,
-        "date": args.date,
+        "date": int(args.date),
         "payments": payment_structure
     }
 
     data[args.id] = new_entry
     
     try:
-        with open(FILENAME, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        logger.debug("Saving data for user id=%s", args.id)
+        save_data(data)
         print(f"Success: Added User ID '{args.id}' ({args.name}).")
     except Exception as e:
+        logger.exception("Error saving data for user id=%s", args.id)
         print(f"Error saving file: {e}")
 
 if __name__ == "__main__":

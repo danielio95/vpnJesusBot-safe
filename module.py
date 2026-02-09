@@ -1,120 +1,127 @@
-from subprocess import run, CalledProcessError
-from sys import argv, exit
+import json
 from os import getenv
-from json import loads, dump, JSONDecodeError
-from tempfile import NamedTemporaryFile
-from os import remove
+from subprocess import run, CalledProcessError
+from sys import exit
+from logging import basicConfig, DEBUG
+import logging
 
-XRAY_BIN = getenv("XRAY_BIN", "./xray")
-XRAY_API_ADDRESS = getenv("XRAY_API_ADDRESS", "127.0.0.1")
-XRAY_API_PORT = getenv("XRAY_API_PORT", "10002")
-XRAY_INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
-XRAY_USER_LEVEL = int(getenv("XRAY_USER_LEVEL", "0"))
-XRAY_USER_FLOW = getenv("XRAY_USER_FLOW", "xtls-rprx-vision")
-XRAY_MAX_DEVICES = int(getenv("XRAY_MAX_DEVICES", "2"))
+basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=DEBUG,
+)
+logger = logging.getLogger(__name__)
 
 def restart_xray():
     try:
         run(['sudo','systemctl','restart','xray.service'],check=True)
         print('xray restarted')
+        logger.debug("xray service restarted successfully")
     except CalledProcessError as error:
+        logger.exception("Failed to restart xray service")
         print(f'error: {error}')
 
 def find_child(data,parent):
     if parent not in data:
+        logger.error("Missing key in data: %s", parent)
         print(f'error: {parent} key not found')
         exit(1)
 
     return data[parent]
 
-def xray_server():
-    return f"{XRAY_API_ADDRESS}:{XRAY_API_PORT}"
+XRAY_BIN = getenv("XRAY_BIN", "./xray")
+API_SERVER = getenv("XRAY_API_SERVER", "127.0.0.1")
+API_PORT = getenv("XRAY_API_PORT", "10002")
 
-def run_xray_api(args, check=False):
-    command = [XRAY_BIN, "api", *args, f"--server={xray_server()}"]
-    return run(command, capture_output=True, text=True, check=check)
+def run_xray_api(args):
+    logger.debug("Running xray api command args=%s", args)
+    return run([XRAY_BIN, "api"] + args, capture_output=True, text=True)
 
-def run_xray_api_with_payload(command, payload, check=False):
-    temp_file = NamedTemporaryFile("w", delete=False, encoding="utf-8")
+def load_xray_api_json(args):
+    result = run_xray_api(args)
+    if result.returncode != 0:
+        logger.error("xray api command failed: %s", result.stderr.strip() or "unknown error")
+        print(result.stderr.strip() or "error: xray api command failed")
+        return None
+
+    output = result.stdout.strip()
+    if not output:
+        logger.debug("xray api returned empty output")
+        return None
+
     try:
-        dump(payload, temp_file, ensure_ascii=False, indent=4)
-        temp_file.flush()
-        temp_file.close()
-        command_args = [XRAY_BIN, "api", command, f"--server={xray_server()}", temp_file.name]
-        return run(command_args, capture_output=True, text=True, check=check)
-    finally:
-        try:
-            remove(temp_file.name)
-        except FileNotFoundError:
-            pass
+        logger.debug("Parsing xray api json output")
+        return json.loads(output)
+    except json.JSONDecodeError:
+        logger.exception("Invalid json from xray api")
+        print("error: invalid json from xray api")
+        return None
 
-def parse_xray_json(output, context):
-    try:
-        return loads(output)
-    except JSONDecodeError:
-        print(f"error: failed to parse xray api output for {context}")
-        return {}
-
-def list_users_from_stats():
-    output = run_xray_api(["statsquery", "--pattern", "user>>>"])
-    if output.returncode != 0:
-        print("error: failed to query stats for users")
-        return []
-    data = parse_xray_json(output.stdout.strip(), "statsquery")
-    stats = data.get("stat", [])
+def extract_emails_from_stats(stats):
     emails = set()
-    for item in stats:
-        name = item.get("name", "")
-        parts = name.split(">>>")
-        if len(parts) >= 2 and parts[0] == "user":
-            emails.add(parts[1])
+    for stat in stats:
+        name = stat.get("name", "")
+        if "user>>>" not in name:
+            continue
+        remainder = name.split("user>>>", 1)[1]
+        email = remainder.split(">>>", 1)[0].strip()
+        if email:
+            emails.add(email)
+    logger.debug("Extracted %s emails from stats", len(emails))
     return sorted(emails)
 
-def get_online_devices(email):
-    output = run_xray_api(["statsonlineiplist", "-email", email])
-    if output.returncode != 0:
-        return set()
-    data = parse_xray_json(output.stdout.strip(), f"statsonlineiplist:{email}")
+def get_users_from_api(server=API_SERVER, port=API_PORT):
+    logger.debug("Fetching users from api server=%s port=%s", server, port)
+    data = load_xray_api_json([
+        "statsquery",
+        f"--server={server}:{port}",
+        "--pattern",
+        "user>>>",
+        "--reset=false",
+    ])
+    if not data:
+        logger.debug("No data returned from api")
+        return []
+
+    stats = data.get("stat", [])
+    if isinstance(stats, dict):
+        stats = [stats]
+    if not isinstance(stats, list):
+        logger.debug("Unexpected stats type=%s", type(stats))
+        return []
+    return extract_emails_from_stats(stats)
+
+def normalize_connection(entry):
+    if isinstance(entry, dict):
+        ip = entry.get("ip") or entry.get("address")
+        port = entry.get("port")
+        if ip and port:
+            return f"{ip}:{port}"
+        if ip:
+            return str(ip)
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        return f"{entry[0]}:{entry[1]}"
+    if isinstance(entry, str):
+        return entry.strip()
+    return str(entry)
+
+def get_user_connections(email, server=API_SERVER, port=API_PORT):
+    logger.debug("Fetching user connections email=%s server=%s port=%s", email, server, port)
+    data = load_xray_api_json([
+        "statsonlineiplist",
+        f"--server={server}:{port}",
+        "-email",
+        email,
+    ])
+    if not data:
+        logger.debug("No connection data returned for email=%s", email)
+        return []
+
     ips = data.get("ips", [])
-    return set(ips)
-
-def add_user_via_api(email, inbound_tag=None, level=None, flow=None, user_id=None):
-    inbound_tag = inbound_tag or XRAY_INBOUND_TAG
-    level = XRAY_USER_LEVEL if level is None else level
-    flow = flow or XRAY_USER_FLOW
-    payload = {
-        "inbounds": [
-            {
-                "tag": inbound_tag,
-                "settings": {
-                    "clients": [
-                        {
-                            "id": user_id,
-                            "level": level,
-                            "email": email,
-                            "flow": flow,
-                        }
-                    ]
-                },
-            }
-        ]
-    }
-    return run_xray_api_with_payload("adu", payload)
-
-def remove_user_via_api(email, inbound_tag=None):
-    inbound_tag = inbound_tag or XRAY_INBOUND_TAG
-    payload = {
-        "inbounds": [
-            {
-                "tag": inbound_tag,
-                "settings": {
-                    "clients": [
-                        {
-                            "email": email,
-                        }
-                    ]
-                },
-            }
-        ]
-    }
-    return run_xray_api_with_payload("rmu", payload)
+    if isinstance(ips, dict):
+        ips = [ips]
+    if not isinstance(ips, list):
+        logger.debug("Unexpected ips type=%s for email=%s", type(ips), email)
+        return []
+    connections = [normalize_connection(entry) for entry in ips]
+    logger.debug("Normalized %s connections for email=%s", len(connections), email)
+    return connections
