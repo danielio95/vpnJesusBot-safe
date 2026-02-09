@@ -2,6 +2,7 @@ from os import getenv, path, listdir
 from datetime import datetime
 from json import load, dump, JSONDecodeError
 from logging.handlers import RotatingFileHandler
+from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup
 from logging import basicConfig, DEBUG, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
@@ -337,7 +338,12 @@ def _get_step_files(step_path):
     return sorted(files)
 
 
-async def _send_instruction_step(update: Update, platform_name: str, step_folder: str):
+async def _send_instruction_step(
+    update: Update,
+    platform_name: str,
+    step_folder: str,
+    reply_markup: Optional[ReplyKeyboardMarkup] = None,
+):
     base_path = path.dirname(__file__)
     step_path = path.join(base_path, platform_name, step_folder)
     if not path.isdir(step_path):
@@ -351,16 +357,18 @@ async def _send_instruction_step(update: Update, platform_name: str, step_folder
 
     image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     text_exts = {".txt", ".text"}
-    for entry_path in files:
+    last_index = len(files) - 1
+    for index, entry_path in enumerate(files):
         _, ext = path.splitext(entry_path.lower())
+        markup = reply_markup if index == last_index else None
         if ext in text_exts:
             with open(entry_path, "r", encoding="utf-8") as handle:
                 content = handle.read().strip()
             if content:
-                await update.message.reply_text(content)
+                await update.message.reply_text(content, reply_markup=markup)
         elif ext in image_exts:
             with open(entry_path, "rb") as handle:
-                await update.message.reply_photo(photo=handle)
+                await update.message.reply_photo(photo=handle, reply_markup=markup)
 
 # def get_payment_status(user_data):
 #     """
@@ -584,10 +592,15 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             context.user_data['instruction_platform'] = platform_key
             context.user_data['instruction_step'] = 0
-            await _send_instruction_step(update, platform_key, steps[0])
-            context.user_data['instruction_step'] = 1
             next_markup = ReplyKeyboardMarkup([[btn_next]], resize_keyboard=True)
-            await update.message.reply_text(msg_menu, reply_markup=next_markup)
+            if len(steps) == 1:
+                await _send_instruction_step(update, platform_key, steps[0], reply_markup=reply_markup)
+                context.user_data['instruction_mode'] = False
+                context.user_data['instruction_platform'] = None
+                context.user_data['instruction_step'] = 0
+            else:
+                await _send_instruction_step(update, platform_key, steps[0], reply_markup=next_markup)
+                context.user_data['instruction_step'] = 1
 
     elif context.user_data.get('instruction_mode') is True and user_text == btn_next:
         platform_key = context.user_data.get('instruction_platform')
@@ -603,16 +616,15 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data['instruction_step'] = 0
                 await update.message.reply_text(msg_menu, reply_markup=reply_markup)
             else:
-                await _send_instruction_step(update, platform_key, steps[step_index])
+                next_markup = ReplyKeyboardMarkup([[btn_next]], resize_keyboard=True)
+                is_last_step = step_index == len(steps) - 1
+                step_markup = reply_markup if is_last_step else next_markup
+                await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
                 context.user_data['instruction_step'] = step_index + 1
-                if context.user_data['instruction_step'] >= len(steps):
+                if is_last_step:
                     context.user_data['instruction_mode'] = False
                     context.user_data['instruction_platform'] = None
                     context.user_data['instruction_step'] = 0
-                    await update.message.reply_text(msg_menu, reply_markup=reply_markup)
-                else:
-                    next_markup = ReplyKeyboardMarkup([[btn_next]], resize_keyboard=True)
-                    await update.message.reply_text(msg_menu, reply_markup=next_markup)
 
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
