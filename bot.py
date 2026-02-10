@@ -3,11 +3,13 @@ from datetime import datetime, timedelta
 from json import load, dump, JSONDecodeError
 from logging.handlers import RotatingFileHandler
 from html import unescape
+from argparse import ArgumentParser
+from sys import stdout
 from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
-from logging import basicConfig, DEBUG, getLogger
+from logging import INFO, WARNING, StreamHandler, basicConfig, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -17,14 +19,24 @@ BOT_TOKEN = getenv("TELEGRAM_BOT_TOKEN")
 DATA_FILE = "users.json"
 MAX_PAYMENT_YEAR = 2026
 
-basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=DEBUG,
-    handlers=[
-        # Writes to output.log, max 5MB, keeps 2 old copies, utf-8 encoding
-        RotatingFileHandler("log/output.log", maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
-    ]
-)
+def configure_logging(stdout_log_mode: str = "enable"):
+    stdout_level = INFO if stdout_log_mode == "enable" else WARNING
+    basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=INFO,
+        handlers=[
+            # Writes to output.log, max 5MB, keeps 2 old copies, utf-8 encoding
+            RotatingFileHandler("log/output.log", maxBytes=5*1024*1024, backupCount=2, encoding='utf-8'),
+            StreamHandler(stdout),
+        ],
+        force=True,
+    )
+    for handler in getLogger().handlers:
+        if isinstance(handler, StreamHandler) and getattr(handler, "stream", None) is stdout:
+            handler.setLevel(stdout_level)
+
+
+configure_logging()
 logger = getLogger(__name__)
 
 # --- MESSAGES ---
@@ -950,6 +962,17 @@ async def handle_error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.exception("Unhandled exception in bot update: %s", update)
 
 if __name__ == '__main__':
+    parser = ArgumentParser(description="Run VPN Jesus bot")
+    parser.add_argument(
+        "--stdout-log",
+        choices=["enable", "disable"],
+        default="enable",
+        help="Control stdout logging verbosity: enable=info logs, disable=warnings and errors only.",
+    )
+    args = parser.parse_args()
+
+    configure_logging(args.stdout_log)
+
     if not BOT_TOKEN:
         print("error: TELEGRAM_BOT_TOKEN environment variable not set.")
         exit()
