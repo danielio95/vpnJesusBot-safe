@@ -37,6 +37,7 @@ msg_noID = "Мне не удалось найти ваш ID в базе данн
 msg_question = "Пожалуйста, задайте свой вопрос, ответ появится здесь в течение 12 часов."
 msg_question_sent = "Вопрос отправлен! Ожидайте ответа."
 msg_menu = "Выберите действие:"
+msg_instruction_controls = "Нажмите «Дальше» или «Отменить»."
 msg_next_payment = "Следующий платеж в"
 msg_welcome = (
     "Привет! 👋\n\n"
@@ -434,6 +435,16 @@ async def _reply_media_group_with_html_caption_fallback(message, media_group, ca
         await message.reply_media_group(media=fallback_group)
 
 
+
+async def _reply_photo_with_html_caption_fallback(message, image_handle, caption_text, reply_markup=None):
+    try:
+        await message.reply_photo(photo=image_handle, caption=caption_text, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+    except BadRequest:
+        logger.warning("Failed to parse HTML in instruction photo caption; retrying without formatting.")
+        image_handle.seek(0)
+        await message.reply_photo(photo=image_handle, caption=caption_text, reply_markup=reply_markup)
+
+
 def _collect_step_content(step_path):
     files = _get_step_files(step_path)
     image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
@@ -471,8 +482,21 @@ async def _send_instruction_step(
         return
 
     if image_paths:
-        max_media = 10
         caption, tail_text = _split_caption_and_tail(text_content) if text_content else (None, "")
+
+        if len(image_paths) == 1:
+            with open(image_paths[0], "rb") as image_handle:
+                await _reply_photo_with_html_caption_fallback(
+                    update.message,
+                    image_handle,
+                    caption,
+                    reply_markup=reply_markup if not tail_text else None,
+                )
+            if tail_text:
+                await _reply_text_with_formatting_fallback(update.message, tail_text, reply_markup=reply_markup)
+            return
+
+        max_media = 10
         for start in range(0, len(image_paths), max_media):
             chunk = image_paths[start:start + max_media]
             media_group = []
@@ -494,7 +518,7 @@ async def _send_instruction_step(
             await _reply_text_with_formatting_fallback(update.message, tail_text, reply_markup=reply_markup)
             return
         if reply_markup is not None:
-            await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+            await update.message.reply_text(msg_instruction_controls, reply_markup=reply_markup)
         return
 
     await _reply_text_with_formatting_fallback(update.message, text_content, reply_markup=reply_markup)
