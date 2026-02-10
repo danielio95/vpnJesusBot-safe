@@ -2,9 +2,11 @@ from os import getenv, path, listdir
 from datetime import datetime, timedelta
 from json import load, dump, JSONDecodeError
 from logging.handlers import RotatingFileHandler
+from html import unescape
 from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from logging import basicConfig, DEBUG, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
@@ -379,6 +381,51 @@ def _get_step_files(step_path):
     return sorted(files)
 
 
+def _normalize_instruction_text(content):
+    normalized = (content or "").replace('\\"', '"').replace("\\'", "'")
+    return unescape(normalized)
+
+
+def _split_caption_and_tail(content, caption_limit=1024):
+    if len(content) <= caption_limit:
+        return content, ""
+
+    caption = content[:caption_limit]
+    # Avoid clipping inside an HTML tag.
+    if caption.rfind("<") > caption.rfind(">"):
+        caption = caption[:caption.rfind("<")]
+    caption = caption.rstrip()
+    tail = content[len(caption):].lstrip() if caption else content
+    return caption, tail
+
+
+async def _reply_text_with_formatting_fallback(message, content, reply_markup=None):
+    if not content:
+        return
+    try:
+        await message.reply_text(content, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+    except BadRequest:
+        logger.warning("Failed to parse HTML in instruction text; sending plain text fallback.")
+        await message.reply_text(content, reply_markup=reply_markup)
+
+
+async def _reply_media_group_with_html_caption_fallback(message, media_group, caption_text):
+    try:
+        await message.reply_media_group(media=media_group)
+    except BadRequest:
+        logger.warning("Failed to parse HTML in instruction caption; retrying without formatting.")
+        for media in media_group:
+            if hasattr(media.media, "seek"):
+                media.media.seek(0)
+        fallback_group = []
+        for i, media in enumerate(media_group):
+            if i == 0 and caption_text:
+                fallback_group.append(InputMediaPhoto(media=media.media, caption=caption_text))
+            else:
+                fallback_group.append(InputMediaPhoto(media=media.media))
+        await message.reply_media_group(media=fallback_group)
+
+
 def _collect_step_content(step_path):
     files = _get_step_files(step_path)
     image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
@@ -394,7 +441,8 @@ def _collect_step_content(step_path):
                 content = handle.read().strip()
             if content:
                 text_blocks.append(content)
-    return image_paths, "\n\n".join(text_blocks)
+    text_content = _normalize_instruction_text("\n\n".join(text_blocks))
+    return image_paths, text_content
 
 
 async def _send_instruction_step(
@@ -414,10 +462,9 @@ async def _send_instruction_step(
         await update.message.reply_text(msg_error)
         return
 
-    parse_mode = ParseMode.MARKDOWN
     if image_paths:
         max_media = 10
-        caption = text_content[:1024] if text_content else None
+        caption, tail_text = _split_caption_and_tail(text_content) if text_content else (None, "")
         for start in range(0, len(image_paths), max_media):
             chunk = image_paths[start:start + max_media]
             media_group = []
@@ -426,18 +473,22 @@ async def _send_instruction_step(
                 handle = open(image_path, "rb")
                 open_handles.append(handle)
                 if start == 0 and index == 0 and caption:
-                    media_group.append(InputMediaPhoto(media=handle, caption=caption, parse_mode=parse_mode))
+                    media_group.append(InputMediaPhoto(media=handle, caption=caption, parse_mode=ParseMode.HTML))
                 else:
                     media_group.append(InputMediaPhoto(media=handle))
             try:
-                await update.message.reply_media_group(media=media_group)
+                caption_for_chunk = caption if start == 0 else None
+                await _reply_media_group_with_html_caption_fallback(update.message, media_group, caption_for_chunk)
             finally:
                 for handle in open_handles:
                     handle.close()
+        if tail_text:
+            await _reply_text_with_formatting_fallback(update.message, tail_text, reply_markup=reply_markup)
+            return
         await update.message.reply_text("⁠", reply_markup=reply_markup)
         return
 
-    await update.message.reply_text(text_content, parse_mode=parse_mode, reply_markup=reply_markup)
+    await _reply_text_with_formatting_fallback(update.message, text_content, reply_markup=reply_markup)
 
 # def get_payment_status(user_data):
 #     """
