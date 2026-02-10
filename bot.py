@@ -37,6 +37,7 @@ msg_noID = "Мне не удалось найти ваш ID в базе данн
 msg_question = "Пожалуйста, задайте свой вопрос, ответ появится здесь в течение 12 часов."
 msg_question_sent = "Вопрос отправлен! Ожидайте ответа."
 msg_menu = "Выберите действие:"
+msg_choose_device = "Выберите устройство:"
 msg_instruction_controls = "Нажмите «Дальше» или «Отменить»."
 msg_next_payment = "Следующий платеж в"
 msg_welcome = (
@@ -517,8 +518,8 @@ async def _send_instruction_step(
         if tail_text:
             await _reply_text_with_formatting_fallback(update.message, tail_text, reply_markup=reply_markup)
             return
-        if reply_markup is not None:
-            await update.message.reply_text(msg_instruction_controls, reply_markup=reply_markup)
+        #if reply_markup is not None:
+        #    await update.message.reply_text(msg_instruction_controls, reply_markup=reply_markup)
         return
 
     await _reply_text_with_formatting_fallback(update.message, text_content, reply_markup=reply_markup)
@@ -740,7 +741,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         platform_buttons = [[name] for name in instruction_platforms.keys()]
         platform_buttons.append([btn_cancel])
         instruction_markup = ReplyKeyboardMarkup(platform_buttons, resize_keyboard=True)
-        await update.message.reply_text(msg_menu, reply_markup=instruction_markup)
+        await update.message.reply_text(msg_choose_device, reply_markup=instruction_markup)
 
     elif context.user_data.get('instruction_mode') is True and user_text in instruction_platforms:
         context.user_data['awaiting_question'] = False
