@@ -758,6 +758,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             next_markup = build_instruction_next_markup(platform_key, 0)
             if len(steps) == 1:
                 await _send_instruction_step(update, platform_key, steps[0], reply_markup=reply_markup)
+                await update.message.reply_text(msg_menu, reply_markup=reply_markup)
                 context.user_data['instruction_mode'] = False
                 context.user_data['instruction_platform'] = None
                 context.user_data['instruction_step'] = 0
@@ -785,6 +786,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
                 context.user_data['instruction_step'] = step_index + 1
                 if is_last_step:
+                    await update.message.reply_text(msg_menu, reply_markup=reply_markup)
                     context.user_data['instruction_mode'] = False
                     context.user_data['instruction_platform'] = None
                     context.user_data['instruction_step'] = 0
