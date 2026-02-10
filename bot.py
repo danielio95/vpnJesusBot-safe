@@ -3,7 +3,9 @@ from datetime import datetime, timedelta
 from json import load, dump, JSONDecodeError
 from logging.handlers import RotatingFileHandler
 from typing import Optional
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
+from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from logging import basicConfig, DEBUG, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
@@ -378,6 +380,48 @@ def _get_step_files(step_path):
     return sorted(files)
 
 
+async def _reply_text_with_markdown_fallback(message, content, reply_markup=None):
+    if not content:
+        return
+    try:
+        await message.reply_text(content, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+    except BadRequest:
+        logger.warning("Failed to parse markdown in instruction text; sending plain text fallback.")
+        await message.reply_text(content, reply_markup=reply_markup)
+
+
+async def _reply_media_group_with_markdown_caption_fallback(message, media_group, caption_text):
+    try:
+        await message.reply_media_group(media=media_group)
+    except BadRequest:
+        logger.warning("Failed to parse markdown in instruction caption; retrying without markdown.")
+        fallback_group = []
+        for i, media in enumerate(media_group):
+            if i == 0 and caption_text:
+                fallback_group.append(InputMediaPhoto(media=media.media, caption=caption_text))
+            else:
+                fallback_group.append(InputMediaPhoto(media=media.media))
+        await message.reply_media_group(media=fallback_group)
+
+
+def _collect_step_content(step_path):
+    files = _get_step_files(step_path)
+    image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    text_exts = {".txt", ".text"}
+    image_paths = []
+    text_blocks = []
+    for entry_path in files:
+        _, ext = path.splitext(entry_path.lower())
+        if ext in image_exts:
+            image_paths.append(entry_path)
+        elif ext in text_exts:
+            with open(entry_path, "r", encoding="utf-8") as handle:
+                content = handle.read().strip()
+            if content:
+                text_blocks.append(content)
+    return image_paths, "\n\n".join(text_blocks)
+
+
 async def _send_instruction_step(
     update: Update,
     platform_name: str,
@@ -385,30 +429,39 @@ async def _send_instruction_step(
     reply_markup: Optional[ReplyKeyboardMarkup] = None,
 ):
     base_path = path.dirname(__file__)
-    step_path = path.join(base_path, platform_name, step_folder)
+    step_path = path.join(base_path, "instructions", platform_name, step_folder)
     if not path.isdir(step_path):
         await update.message.reply_text(msg_error)
         return
 
-    files = _get_step_files(step_path)
-    if not files:
+    image_paths, text_content = _collect_step_content(step_path)
+    if not image_paths and not text_content:
         await update.message.reply_text(msg_error)
         return
 
-    image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-    text_exts = {".txt", ".text"}
-    last_index = len(files) - 1
-    for index, entry_path in enumerate(files):
-        _, ext = path.splitext(entry_path.lower())
-        markup = reply_markup if index == last_index else None
-        if ext in text_exts:
-            with open(entry_path, "r", encoding="utf-8") as handle:
-                content = handle.read().strip()
-            if content:
-                await update.message.reply_text(content, reply_markup=markup)
-        elif ext in image_exts:
-            with open(entry_path, "rb") as handle:
-                await update.message.reply_photo(photo=handle, reply_markup=markup)
+    if image_paths:
+        max_media = 10
+        caption = text_content[:1024] if text_content else None
+        for start in range(0, len(image_paths), max_media):
+            chunk = image_paths[start:start + max_media]
+            media_group = []
+            open_handles = []
+            for index, image_path in enumerate(chunk):
+                handle = open(image_path, "rb")
+                open_handles.append(handle)
+                if start == 0 and index == 0 and caption:
+                    media_group.append(InputMediaPhoto(media=handle, caption=caption, parse_mode=ParseMode.MARKDOWN))
+                else:
+                    media_group.append(InputMediaPhoto(media=handle))
+            try:
+                await _reply_media_group_with_markdown_caption_fallback(update.message, media_group, caption)
+            finally:
+                for handle in open_handles:
+                    handle.close()
+        await update.message.reply_text("⁠", reply_markup=reply_markup)
+        return
+
+    await _reply_text_with_markdown_fallback(update.message, text_content, reply_markup=reply_markup)
 
 # def get_payment_status(user_data):
 #     """
