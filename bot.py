@@ -766,7 +766,18 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
         context.user_data['awaiting_question'] = False
-        context.user_data['instruction_mode'] = False
+        in_instruction_flow = (
+            context.user_data.get('instruction_mode') is True
+            and context.user_data.get('instruction_platform')
+        )
+        if in_instruction_flow:
+            platform_key = context.user_data.get('instruction_platform')
+            step_index = context.user_data.get('instruction_step', 0)
+            step_markup = build_instruction_next_markup(platform_key, max(step_index - 1, 0))
+        else:
+            context.user_data['instruction_mode'] = False
+            step_markup = reply_markup
+
         user_name = update.effective_user.first_name
         if user_id_str in all_users_data:
             user_entry = get_user_entry(all_users_data, user_id_str, user_name)
@@ -781,7 +792,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         if not user_id or not sid:
             user_id, sid = add_xray_user(xray_info["email"])
             if not user_id or not sid:
-                await update.message.reply_text(msg_error, reply_markup=reply_markup)
+                await update.message.reply_text(msg_error, reply_markup=step_markup)
                 return
             xray_info["id"] = user_id
             xray_info["shortid"] = sid
@@ -789,7 +800,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         save_bot_data(all_users_data)
 
         config_string = build_vless_config(user_id, sid)
-        await update.message.reply_text(config_string, reply_markup=reply_markup)
+        await update.message.reply_text(config_string, reply_markup=step_markup)
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
