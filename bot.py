@@ -837,4 +837,3 @@ if __name__ == '__main__':
     print("bot is running...")
     #application.run_polling(poll_interval=0.0)
     application.run_polling(poll_interval=0.0, timeout=0.0, bootstrap_retries=0)
-linux*/

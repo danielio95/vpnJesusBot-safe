@@ -1,2 +1,2 @@
-1. Установите приложение Hiddify из GooglePlay
+1. Установите приложение Hiddify из GooglePlay <a href=\"https://play.google.com/store/apps/details%3Fid%3Dapp.hiddify.com%26hl%3Dru%26referrer%3Dutm_source%253Dgoogle%2526utm_medium%253Dorganic%2526utm_term%253D%25D1%2581%25D0%25BA%25D0%25B0%25D1%2587%25D0%25B0%25D1%2582%25D1%258C%2Bhiddify%26pcampaignid%3DAPPU_1_eJOKaaiQGpCK9u8P1cCHwQg&ved=2ahUKEwiorOGF7M2SAxUQhf0HHVXgIYgQ5YQBegQIFRAC&usg=AOvVaw2cuOP9HsbVw-C0Wgkmm2Bz\">или по этой ссылке</a>
 2. Нажмите кнопку "Получить конфиг" снизу и скопируйте строку
