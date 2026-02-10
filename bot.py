@@ -70,6 +70,14 @@ instruction_platforms = {
     "linux": "linux",
 }
 
+
+def build_instruction_next_markup(platform_key: str, step_index: int):
+    if platform_key == "android" and step_index == 0:
+        keyboard = [[btn_next, btn_3], [btn_cancel]]
+    else:
+        keyboard = [[btn_next], [btn_cancel]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 MONTH_MAP = {
     1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
     7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
@@ -722,7 +730,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             context.user_data['instruction_platform'] = platform_key
             context.user_data['instruction_step'] = 0
-            next_markup = ReplyKeyboardMarkup([[btn_next], [btn_cancel]], resize_keyboard=True)
+            next_markup = build_instruction_next_markup(platform_key, 0)
             if len(steps) == 1:
                 await _send_instruction_step(update, platform_key, steps[0], reply_markup=reply_markup)
                 context.user_data['instruction_mode'] = False
@@ -746,7 +754,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data['instruction_step'] = 0
                 await update.message.reply_text(msg_menu, reply_markup=reply_markup)
             else:
-                next_markup = ReplyKeyboardMarkup([[btn_next], [btn_cancel]], resize_keyboard=True)
+                next_markup = build_instruction_next_markup(platform_key, step_index)
                 is_last_step = step_index == len(steps) - 1
                 step_markup = reply_markup if is_last_step else next_markup
                 await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
@@ -759,7 +767,18 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
         context.user_data['awaiting_question'] = False
-        context.user_data['instruction_mode'] = False
+        in_instruction_flow = (
+            context.user_data.get('instruction_mode') is True
+            and context.user_data.get('instruction_platform')
+        )
+        if in_instruction_flow:
+            platform_key = context.user_data.get('instruction_platform')
+            step_index = context.user_data.get('instruction_step', 0)
+            step_markup = build_instruction_next_markup(platform_key, max(step_index - 1, 0))
+        else:
+            context.user_data['instruction_mode'] = False
+            step_markup = reply_markup
+
         user_name = update.effective_user.first_name
         if user_id_str in all_users_data:
             user_entry = get_user_entry(all_users_data, user_id_str, user_name)
@@ -774,7 +793,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         if not user_id or not sid:
             user_id, sid = add_xray_user(xray_info["email"])
             if not user_id or not sid:
-                await update.message.reply_text(msg_error, reply_markup=reply_markup)
+                await update.message.reply_text(msg_error, reply_markup=step_markup)
                 return
             xray_info["id"] = user_id
             xray_info["shortid"] = sid
@@ -782,7 +801,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         save_bot_data(all_users_data)
 
         config_string = build_vless_config(user_id, sid)
-        await update.message.reply_text(config_string, reply_markup=reply_markup)
+        await update.message.reply_text(config_string, reply_markup=step_markup)
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
