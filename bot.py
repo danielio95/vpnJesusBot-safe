@@ -493,7 +493,8 @@ async def _send_instruction_step(
         if tail_text:
             await _reply_text_with_formatting_fallback(update.message, tail_text, reply_markup=reply_markup)
             return
-        await update.message.reply_text("⁠", reply_markup=reply_markup)
+        if reply_markup is not None:
+            await update.message.reply_text(msg_menu, reply_markup=reply_markup)
         return
 
     await _reply_text_with_formatting_fallback(update.message, text_content, reply_markup=reply_markup)
