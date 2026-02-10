@@ -5,7 +5,6 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
-from telegram.error import BadRequest
 from logging import basicConfig, DEBUG, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
@@ -380,30 +379,6 @@ def _get_step_files(step_path):
     return sorted(files)
 
 
-async def _reply_text_with_markdown_fallback(message, content, reply_markup=None):
-    if not content:
-        return
-    try:
-        await message.reply_text(content, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
-    except BadRequest:
-        logger.warning("Failed to parse markdown in instruction text; sending plain text fallback.")
-        await message.reply_text(content, reply_markup=reply_markup)
-
-
-async def _reply_media_group_with_markdown_caption_fallback(message, media_group, caption_text):
-    try:
-        await message.reply_media_group(media=media_group)
-    except BadRequest:
-        logger.warning("Failed to parse markdown in instruction caption; retrying without markdown.")
-        fallback_group = []
-        for i, media in enumerate(media_group):
-            if i == 0 and caption_text:
-                fallback_group.append(InputMediaPhoto(media=media.media, caption=caption_text))
-            else:
-                fallback_group.append(InputMediaPhoto(media=media.media))
-        await message.reply_media_group(media=fallback_group)
-
-
 def _collect_step_content(step_path):
     files = _get_step_files(step_path)
     image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
@@ -439,6 +414,7 @@ async def _send_instruction_step(
         await update.message.reply_text(msg_error)
         return
 
+    parse_mode = ParseMode.MARKDOWN
     if image_paths:
         max_media = 10
         caption = text_content[:1024] if text_content else None
@@ -450,18 +426,18 @@ async def _send_instruction_step(
                 handle = open(image_path, "rb")
                 open_handles.append(handle)
                 if start == 0 and index == 0 and caption:
-                    media_group.append(InputMediaPhoto(media=handle, caption=caption, parse_mode=ParseMode.MARKDOWN))
+                    media_group.append(InputMediaPhoto(media=handle, caption=caption, parse_mode=parse_mode))
                 else:
                     media_group.append(InputMediaPhoto(media=handle))
             try:
-                await _reply_media_group_with_markdown_caption_fallback(update.message, media_group, caption)
+                await update.message.reply_media_group(media=media_group)
             finally:
                 for handle in open_handles:
                     handle.close()
         await update.message.reply_text("⁠", reply_markup=reply_markup)
         return
 
-    await _reply_text_with_markdown_fallback(update.message, text_content, reply_markup=reply_markup)
+    await update.message.reply_text(text_content, parse_mode=parse_mode, reply_markup=reply_markup)
 
 # def get_payment_status(user_data):
 #     """
