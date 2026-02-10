@@ -768,6 +768,16 @@ if __name__ == '__main__':
         exit()
     logger.debug("Starting bot with admin_id=%s data_file=%s", ADMIN_ID, DATA_FILE)
 
+    application = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .connect_timeout(1.0)
+        .read_timeout(1.0)
+        .write_timeout(1.0)
+        .pool_timeout(1.0)
+        .build()
+    )
+
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
     user_data = load_user_data()
@@ -786,4 +796,6 @@ if __name__ == '__main__':
     application.add_error_handler(handle_error)
     
     print("bot is running...")
-    application.run_polling(poll_interval=0.0)
+    #application.run_polling(poll_interval=0.0)
+    application.run_polling(poll_interval=0.0, timeout=0.0, bootstrap_retries=0)
+linux*/
