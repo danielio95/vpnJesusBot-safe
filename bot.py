@@ -76,6 +76,9 @@ btn_3 = "Получить конфиг"
 btn_instruction = "Инструкция"
 btn_next = "Дальше ➡️"
 btn_cancel = "Отменить"
+btn_pay_1_month = "1 мес - 100 руб"
+btn_pay_2_month = "2 мес - 200 руб"
+btn_pay_3_month = "3 мес - 300 руб"
 
 instruction_platforms = {
     "ios": "ios",
@@ -116,6 +119,11 @@ RU_MONTH_MAP = {
 
 def build_main_menu_markup():
     keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def build_payment_options_markup():
+    keyboard = [[btn_pay_1_month], [btn_pay_2_month], [btn_pay_3_month]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # --- DATA MANAGEMENT ---
@@ -842,6 +850,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
         context.user_data['awaiting_question'] = False
+        payment_markup = build_payment_options_markup()
         in_instruction_flow = (
             context.user_data.get('instruction_mode') is True
             and context.user_data.get('instruction_platform')
@@ -860,6 +869,13 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             user_entry = get_user_entry(all_users_data, user_id_str, user_name)
         else:
             user_entry = initialize_user_entry(all_users_data, user_id_str, user_name)
+
+        curr_status, _ = get_payment_status(user_entry)
+        if curr_status != msg_paid:
+            save_bot_data(all_users_data)
+            await update.message.reply_text(f"⚠️ {msg_unpaid}", reply_markup=payment_markup)
+            return
+
         xray_info = user_entry["xray"]
         if not xray_info.get("email"):
             xray_info["email"] = user_id_str
