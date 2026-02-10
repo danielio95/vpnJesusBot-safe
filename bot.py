@@ -6,6 +6,10 @@ from html import unescape
 from argparse import ArgumentParser
 from sys import stdout
 from typing import Optional
+from uuid import uuid4
+import asyncio
+from urllib.parse import quote
+import requests
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
@@ -18,6 +22,12 @@ ADMIN_ID = getenv("TELEGRAM_ADMIN_ID")
 BOT_TOKEN = getenv("TELEGRAM_BOT_TOKEN")
 DATA_FILE = "users.json"
 MAX_PAYMENT_YEAR = 2026
+YOOKASSA_SHOP_ID = getenv("YOOKASSA_SHOP_ID", "").strip()
+YOOKASSA_SECRET_KEY = getenv("YOOKASSA_SECRET_KEY", "").strip()
+YOOKASSA_RETURN_URL = getenv("YOOKASSA_RETURN_URL", "https://t.me/vpnjesusbot").strip()
+YOOKASSA_API_BASE = "https://api.yookassa.ru/v3"
+PAYMENT_POLL_INTERVAL_SECONDS = 10
+PAYMENT_POLL_ATTEMPTS = 60
 
 def configure_logging(stdout_log_mode: str = "enable"):
     stdout_level = INFO if stdout_log_mode == "enable" else WARNING
@@ -45,6 +55,8 @@ msg_error = "Возникла проблема. Пожалуйста, сообщ
 msg_paid_full = "Оплачено до конца 2026 года."
 msg_paid = "Всё готово. Оплата не требуется."
 msg_unpaid = "Для дальнейшего использования VPN необходимо внести оплату."
+msg_payment_pending = "Платёж создан и ожидает подтверждения. Конфиг будет доступен после успешной оплаты."
+msg_payment_success = "Поздравляю с покупкой! Ты можешь посмотреть свою конфигурацию нажав на Получить конфиг"
 msg_noID = "Мне не удалось найти ваш ID в базе данных."
 msg_question = "Пожалуйста, задайте свой вопрос, ответ появится здесь в течение 12 часов."
 msg_question_sent = "Вопрос отправлен! Ожидайте ответа."
@@ -79,6 +91,12 @@ btn_cancel = "Отменить"
 btn_pay_1_month = "1 мес - 100 руб"
 btn_pay_2_month = "2 мес - 200 руб"
 btn_pay_3_month = "3 мес - 300 руб"
+
+PAYMENT_BUTTONS = {
+    btn_pay_1_month: {"months": 1, "amount": 100},
+    btn_pay_2_month: {"months": 2, "amount": 200},
+    btn_pay_3_month: {"months": 3, "amount": 300},
+}
 
 instruction_platforms = {
     "ios": "ios",
@@ -166,11 +184,15 @@ def _normalize_xray_data(xray_data, default_email=""):
 
 def _normalize_user_entry(user_id_str, entry):
     base = entry if isinstance(entry, dict) else {}
+    pending_payment = base.get("pending_payment")
+    if not isinstance(pending_payment, dict):
+        pending_payment = None
     return {
         "name": base.get("name", ""),
         "date": base.get("date", 1),
         "payments": _prune_payments(base.get("payments", {})),
         "xray": _normalize_xray_data(base.get("xray", {}), default_email=user_id_str),
+        "pending_payment": pending_payment,
     }
 
 def _normalize_users_data(data):
@@ -241,9 +263,227 @@ def initialize_user_entry(all_users_data, user_id_str, user_name):
             "id": "",
             "shortid": "",
         },
+        "pending_payment": None,
     }
     all_users_data[user_id_str] = entry
     return entry
+
+
+def _mask_secret(secret):
+    if not secret:
+        return "<empty>"
+    if len(secret) <= 6:
+        return "***"
+    return f"{secret[:3]}***{secret[-3:]}"
+
+
+def _resolve_payment_start_month(user_entry):
+    now = datetime.now()
+    due_day = int(user_entry.get("date", 1) or 1)
+    payments = user_entry.get("payments", {})
+
+    curr_year = now.year
+    curr_month_idx = now.month
+    curr_status = _get_month_status(payments, curr_year, curr_month_idx)
+    logger.debug(
+        "[PAYMENT START] user_due_day=%s curr_year=%s curr_month=%s curr_status=%s curr_day=%s",
+        due_day,
+        curr_year,
+        MONTH_MAP[curr_month_idx],
+        curr_status,
+        now.day,
+    )
+    if curr_status == UNPAID_STATUS:
+        return curr_year, curr_month_idx
+
+    next_month_idx = curr_month_idx + 1
+    next_year = curr_year
+    if next_month_idx > 12:
+        next_month_idx = 1
+        next_year += 1
+
+    next_status = _get_month_status(payments, next_year, next_month_idx)
+    if now.day > due_day and next_status == UNPAID_STATUS:
+        return next_year, next_month_idx
+
+    for year in range(curr_year, MAX_PAYMENT_YEAR + 1):
+        month_start = curr_month_idx if year == curr_year else 1
+        for month_idx in range(month_start, 13):
+            if _get_month_status(payments, year, month_idx) == UNPAID_STATUS:
+                return year, month_idx
+
+    return MAX_PAYMENT_YEAR, 12
+
+
+def mark_months_paid(user_entry, months_count):
+    payments = user_entry.get("payments", {})
+    start_year, start_month = _resolve_payment_start_month(user_entry)
+    logger.info(
+        "[PAYMENT APPLY] Applying paid months=%s starting from %s-%s",
+        months_count,
+        start_year,
+        MONTH_MAP.get(start_month),
+    )
+
+    year = start_year
+    month = start_month
+    remaining = max(0, int(months_count))
+    while remaining > 0 and year <= MAX_PAYMENT_YEAR:
+        ensure_year(payments, year)
+        if year == MAX_PAYMENT_YEAR:
+            month_key = MONTH_MAP[month]
+            payments[str(year)][month_key] = 1
+            logger.debug("[PAYMENT APPLY] marked paid year=%s month=%s", year, month_key)
+            remaining -= 1
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+
+    user_entry["payments"] = payments
+
+
+def create_yookassa_payment(amount_rub, description, user_id, months_count):
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+        logger.error(
+            "[PAYMENT CREATE] Missing YooKassa credentials shop_id=%s secret=%s",
+            YOOKASSA_SHOP_ID,
+            _mask_secret(YOOKASSA_SECRET_KEY),
+        )
+        return {"error": "missing_credentials"}
+
+    idempotence_key = str(uuid4())
+    payload = {
+        "amount": {"value": f"{float(amount_rub):.2f}", "currency": "RUB"},
+        "payment_method_data": {"type": "sbp"},
+        "confirmation": {
+            "type": "redirect",
+            "return_url": YOOKASSA_RETURN_URL,
+        },
+        "capture": True,
+        "description": description,
+        "metadata": {
+            "tg_user_id": user_id,
+            "months": str(months_count),
+        },
+    }
+    logger.info(
+        "[PAYMENT CREATE] Creating payment idempotence=%s user_id=%s amount=%s months=%s return_url=%s",
+        idempotence_key,
+        user_id,
+        amount_rub,
+        months_count,
+        YOOKASSA_RETURN_URL,
+    )
+    logger.debug("[PAYMENT CREATE] Request payload: %s", payload)
+
+    try:
+        response = requests.post(
+            f"{YOOKASSA_API_BASE}/payments",
+            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
+            headers={
+                "Idempotence-Key": idempotence_key,
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=30,
+        )
+    except Exception:
+        logger.exception("[PAYMENT CREATE] request failed user_id=%s", user_id)
+        return {"error": "request_failed"}
+
+    logger.info(
+        "[PAYMENT CREATE] Response status=%s user_id=%s body=%s",
+        response.status_code,
+        user_id,
+        response.text,
+    )
+    if not response.ok:
+        return {"error": "api_error", "status_code": response.status_code, "body": response.text}
+
+    return response.json()
+
+
+def fetch_yookassa_payment(payment_id):
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+        return {"error": "missing_credentials"}
+
+    logger.debug("[PAYMENT STATUS] Fetching payment_id=%s", payment_id)
+    try:
+        response = requests.get(
+            f"{YOOKASSA_API_BASE}/payments/{payment_id}",
+            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
+            timeout=30,
+        )
+    except Exception:
+        logger.exception("[PAYMENT STATUS] request failed payment_id=%s", payment_id)
+        return {"error": "request_failed"}
+
+    if not response.ok:
+        logger.warning(
+            "[PAYMENT STATUS] non-ok status=%s payment_id=%s body=%s",
+            response.status_code,
+            payment_id,
+            response.text,
+        )
+        return {"error": "api_error", "status_code": response.status_code, "body": response.text}
+
+    data = response.json()
+    logger.debug("[PAYMENT STATUS] response payment_id=%s payload=%s", payment_id, data)
+    return data
+
+
+async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id_str: str, payment_id: str):
+    logger.info(
+        "[PAYMENT MONITOR] started user_id=%s payment_id=%s attempts=%s interval=%s",
+        user_id_str,
+        payment_id,
+        PAYMENT_POLL_ATTEMPTS,
+        PAYMENT_POLL_INTERVAL_SECONDS,
+    )
+    for attempt in range(1, PAYMENT_POLL_ATTEMPTS + 1):
+        data = await asyncio.to_thread(fetch_yookassa_payment, payment_id)
+        logger.info("[PAYMENT MONITOR] attempt=%s user_id=%s payment_id=%s data=%s", attempt, user_id_str, payment_id, data)
+
+        all_users_data = context.bot_data.get('user_info', {})
+        user_entry = all_users_data.get(user_id_str)
+        if not user_entry:
+            logger.warning("[PAYMENT MONITOR] user disappeared user_id=%s payment_id=%s", user_id_str, payment_id)
+            return
+
+        pending_payment = user_entry.get("pending_payment") or {}
+        if pending_payment.get("payment_id") != payment_id:
+            logger.warning("[PAYMENT MONITOR] pending payment changed user_id=%s existing=%s expected=%s", user_id_str, pending_payment.get("payment_id"), payment_id)
+            return
+
+        status = data.get("status") if isinstance(data, dict) else None
+        paid = bool(data.get("paid", False)) if isinstance(data, dict) else False
+        pending_payment["last_status"] = status
+        pending_payment["last_checked_at"] = datetime.now().isoformat()
+        pending_payment["attempt"] = attempt
+        user_entry["pending_payment"] = pending_payment
+        save_bot_data(all_users_data)
+
+        if status == "succeeded" and paid:
+            months = int(pending_payment.get("months", 1))
+            mark_months_paid(user_entry, months)
+            user_entry["pending_payment"] = None
+            save_bot_data(all_users_data)
+            await context.bot.send_message(chat_id=user_id_str, text=msg_payment_success, reply_markup=build_main_menu_markup())
+            logger.info("[PAYMENT MONITOR] payment succeeded user_id=%s payment_id=%s months=%s", user_id_str, payment_id, months)
+            return
+
+        if status in {"canceled"}:
+            user_entry["pending_payment"] = None
+            save_bot_data(all_users_data)
+            await context.bot.send_message(chat_id=user_id_str, text="Оплата была отменена. Попробуй снова, нажав на Получить конфиг.", reply_markup=build_main_menu_markup())
+            logger.info("[PAYMENT MONITOR] payment canceled user_id=%s payment_id=%s", user_id_str, payment_id)
+            return
+
+        await asyncio.sleep(PAYMENT_POLL_INTERVAL_SECONDS)
+
+    logger.warning("[PAYMENT MONITOR] timeout user_id=%s payment_id=%s", user_id_str, payment_id)
+    await context.bot.send_message(chat_id=user_id_str, text="Платёж всё ещё обрабатывается. Когда он подтвердится, я автоматически открою доступ к конфигу.")
 
 def build_vless_config(user_id, sid):
     return (
@@ -870,6 +1110,38 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             user_entry = initialize_user_entry(all_users_data, user_id_str, user_name)
 
+        pending_payment = user_entry.get("pending_payment")
+        if isinstance(pending_payment, dict) and pending_payment.get("payment_id"):
+            logger.info(
+                "[PAYMENT CHECK] user_id=%s has pending payment payment_id=%s status=%s",
+                user_id_str,
+                pending_payment.get("payment_id"),
+                pending_payment.get("last_status"),
+            )
+            latest_data = await asyncio.to_thread(fetch_yookassa_payment, pending_payment.get("payment_id"))
+            status = latest_data.get("status") if isinstance(latest_data, dict) else None
+            paid = bool(latest_data.get("paid", False)) if isinstance(latest_data, dict) else False
+            logger.info(
+                "[PAYMENT CHECK] latest status user_id=%s payment_id=%s status=%s paid=%s",
+                user_id_str,
+                pending_payment.get("payment_id"),
+                status,
+                paid,
+            )
+            if status == "succeeded" and paid:
+                months = int(pending_payment.get("months", 1))
+                mark_months_paid(user_entry, months)
+                user_entry["pending_payment"] = None
+                save_bot_data(all_users_data)
+                await update.message.reply_text(msg_payment_success, reply_markup=reply_markup)
+            else:
+                link = pending_payment.get("confirmation_url")
+                txt = f"{msg_payment_pending}\nСтатус: {status or 'unknown'}"
+                if link:
+                    txt += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
+                await update.message.reply_text(txt, reply_markup=payment_markup)
+            return
+
         curr_status, _ = get_payment_status(user_entry)
         if curr_status != msg_paid:
             save_bot_data(all_users_data)
@@ -894,6 +1166,85 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
         config_string = build_vless_config(user_id, sid)
         await update.message.reply_text(config_string, reply_markup=step_markup)
+
+    elif user_text in PAYMENT_BUTTONS:
+        context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = False
+        context.user_data['instruction_step_in_progress'] = False
+        payment_choice = PAYMENT_BUTTONS[user_text]
+        months = payment_choice["months"]
+        amount = payment_choice["amount"]
+        logger.info(
+            "[PAYMENT FLOW] button selected user_id=%s text=%s months=%s amount=%s",
+            user_id_str,
+            user_text,
+            months,
+            amount,
+        )
+
+        user_name = update.effective_user.first_name
+        if user_id_str in all_users_data:
+            user_entry = get_user_entry(all_users_data, user_id_str, user_name)
+        else:
+            user_entry = initialize_user_entry(all_users_data, user_id_str, user_name)
+
+        existing_pending = user_entry.get("pending_payment")
+        if isinstance(existing_pending, dict) and existing_pending.get("payment_id"):
+            logger.info("[PAYMENT FLOW] reusing existing pending payment user_id=%s payment_id=%s", user_id_str, existing_pending.get("payment_id"))
+            link = existing_pending.get("confirmation_url")
+            text = f"У тебя уже есть незавершённый платёж.\nСтатус: {existing_pending.get('last_status', 'pending')}"
+            if link:
+                text += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
+            await update.message.reply_text(text, reply_markup=build_payment_options_markup())
+            return
+
+        description = f"VPN Jesus подписка: {months} мес. Telegram user {user_id_str}"
+        payment_data = await asyncio.to_thread(
+            create_yookassa_payment,
+            amount,
+            description,
+            user_id_str,
+            months,
+        )
+        logger.info("[PAYMENT FLOW] create payment result user_id=%s data=%s", user_id_str, payment_data)
+
+        if not isinstance(payment_data, dict) or payment_data.get("error"):
+            await update.message.reply_text(
+                "Не удалось создать платёж. Проверь настройки YooKassa и попробуй снова.",
+                reply_markup=build_payment_options_markup(),
+            )
+            return
+
+        confirmation_url = payment_data.get("confirmation", {}).get("confirmation_url")
+        payment_id = payment_data.get("id")
+        user_entry["pending_payment"] = {
+            "payment_id": payment_id,
+            "confirmation_url": confirmation_url,
+            "months": months,
+            "amount": amount,
+            "created_at": datetime.now().isoformat(),
+            "last_status": payment_data.get("status"),
+        }
+        save_bot_data(all_users_data)
+
+        if not payment_id or not confirmation_url:
+            logger.error("[PAYMENT FLOW] missing payment id or confirmation url user_id=%s payload=%s", user_id_str, payment_data)
+            await update.message.reply_text(msg_error, reply_markup=build_main_menu_markup())
+            return
+
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(confirmation_url)}"
+        await update.message.reply_text(
+            (
+                "Платёж создан ✅\n"
+                f"Сумма: {amount} RUB\n"
+                f"Месяцев: {months}\n"
+                f"Ссылка на оплату: {confirmation_url}\n"
+                f"QR: {qr_url}\n\n"
+                "Я автоматически проверяю оплату. Пока оплата не подтверждена, доступ к конфигу закрыт."
+            ),
+            reply_markup=build_payment_options_markup(),
+        )
+        context.application.create_task(monitor_payment_and_unlock(context, user_id_str, payment_id))
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
