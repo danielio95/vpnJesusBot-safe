@@ -98,6 +98,21 @@ MONTH_MAP = {
     7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
 }
 
+RU_MONTH_MAP = {
+    'jan': 'января',
+    'feb': 'февраля',
+    'mar': 'марта',
+    'apr': 'апреля',
+    'may': 'мая',
+    'jun': 'июня',
+    'jul': 'июля',
+    'aug': 'августа',
+    'sep': 'сентября',
+    'oct': 'октября',
+    'nov': 'ноября',
+    'dec': 'декабря',
+}
+
 
 def build_main_menu_markup():
     keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
@@ -360,7 +375,8 @@ def get_payment_status(user_data):
 
                 prev_key = MONTH_MAP[prev_m]
 
-                next_unpaid_str = f"{due_day} {prev_key} {prev_y}"
+                localized_month = RU_MONTH_MAP.get(prev_key, prev_key)
+                next_unpaid_str = f"{due_day} {localized_month} {prev_y}"
                 break
         if next_unpaid_str:
             break
