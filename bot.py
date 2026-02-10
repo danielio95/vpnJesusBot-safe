@@ -39,6 +39,7 @@ msg_question_sent = "Вопрос отправлен! Ожидайте отве�
 msg_menu = "Выберите действие:"
 msg_choose_device = "Выберите устройство:"
 msg_instruction_controls = "Нажмите «Дальше» или «Отменить»."
+msg_instruction_wait = "Подождите, отправляю следующий шаг…"
 msg_next_payment = "Следующий платеж в"
 msg_welcome = (
     "Привет! 👋\n\n"
@@ -660,6 +661,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     if user_text == btn_1:
         context.user_data['awaiting_question'] = False
         context.user_data['instruction_mode'] = False
+        context.user_data['instruction_step_in_progress'] = False
 
         found_user = all_users_data.get(user_id_str)
 
@@ -720,6 +722,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     elif user_text == btn_2:
         context.user_data['awaiting_question'] = True
         context.user_data['instruction_mode'] = False
+        context.user_data['instruction_step_in_progress'] = False
         logger.debug("User %s entered question mode", user_id_str)
         cancel_markup = ReplyKeyboardMarkup([[btn_cancel]], resize_keyboard=True)
         await update.message.reply_text(msg_question, reply_markup=cancel_markup)
@@ -730,6 +733,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_platform'] = None
         context.user_data['instruction_step'] = 0
+        context.user_data['instruction_step_in_progress'] = False
         await update.message.reply_text(msg_menu, reply_markup=reply_markup)
 
     # --- LOGIC 2.4: INSTRUCTION MENU ---
@@ -738,6 +742,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['instruction_mode'] = True
         context.user_data['instruction_platform'] = None
         context.user_data['instruction_step'] = 0
+        context.user_data['instruction_step_in_progress'] = False
         platform_buttons = [[name] for name in instruction_platforms.keys()]
         platform_buttons.append([btn_cancel])
         instruction_markup = ReplyKeyboardMarkup(platform_buttons, resize_keyboard=True)
@@ -751,6 +756,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             context.user_data['instruction_mode'] = False
             context.user_data['instruction_platform'] = None
             context.user_data['instruction_step'] = 0
+            context.user_data['instruction_step_in_progress'] = False
             await update.message.reply_text(msg_error, reply_markup=reply_markup)
         else:
             context.user_data['instruction_platform'] = platform_key
@@ -766,6 +772,10 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data['instruction_step'] = 1
 
     elif context.user_data.get('instruction_mode') is True and user_text == btn_next:
+        if context.user_data.get('instruction_step_in_progress'):
+            await update.message.reply_text(msg_instruction_wait)
+            return
+
         platform_key = context.user_data.get('instruction_platform')
         if not platform_key:
             context.user_data['instruction_mode'] = False
@@ -777,17 +787,27 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data['instruction_mode'] = False
                 context.user_data['instruction_platform'] = None
                 context.user_data['instruction_step'] = 0
+                context.user_data['instruction_step_in_progress'] = False
                 await update.message.reply_text(msg_menu, reply_markup=reply_markup)
             else:
+                context.user_data['instruction_step_in_progress'] = True
                 next_markup = build_instruction_next_markup(platform_key, step_index)
                 is_last_step = step_index == len(steps) - 1
                 step_markup = reply_markup if is_last_step else next_markup
-                await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
                 context.user_data['instruction_step'] = step_index + 1
+                try:
+                    await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
+                except Exception:
+                    context.user_data['instruction_step'] = step_index
+                    raise
+                finally:
+                    context.user_data['instruction_step_in_progress'] = False
+
                 if is_last_step:
                     context.user_data['instruction_mode'] = False
                     context.user_data['instruction_platform'] = None
                     context.user_data['instruction_step'] = 0
+                    context.user_data['instruction_step_in_progress'] = False
 
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
@@ -802,6 +822,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             step_markup = build_instruction_next_markup(platform_key, max(step_index - 1, 0))
         else:
             context.user_data['instruction_mode'] = False
+            context.user_data['instruction_step_in_progress'] = False
             step_markup = reply_markup
 
         user_name = update.effective_user.first_name
@@ -857,12 +878,14 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         logger.debug("Fallback to menu for user_id=%s", user_id_str)
         context.user_data['instruction_mode'] = False
+        context.user_data['instruction_step_in_progress'] = False
         await update.message.reply_text(msg_menu, reply_markup=reply_markup)
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['awaiting_question'] = False
     context.user_data['instruction_mode'] = False
+    context.user_data['instruction_step_in_progress'] = False
     reply_markup = build_main_menu_markup()
 
     full_name = " ".join(
@@ -933,14 +956,12 @@ if __name__ == '__main__':
     application = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
-        .connect_timeout(1.0)
-        .read_timeout(1.0)
-        .write_timeout(1.0)
-        .pool_timeout(1.0)
+        .connect_timeout(5.0)
+        .read_timeout(20.0)
+        .write_timeout(20.0)
+        .pool_timeout(5.0)
         .build()
     )
-
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
     
     user_data = load_user_data()
     application.bot_data['user_info'] = user_data
@@ -961,4 +982,4 @@ if __name__ == '__main__':
     
     print("bot is running...")
     #application.run_polling(poll_interval=0.0)
-    application.run_polling(poll_interval=0.0, timeout=0.0, bootstrap_retries=0)
+    application.run_polling(poll_interval=0.5, timeout=20.0, bootstrap_retries=3)
