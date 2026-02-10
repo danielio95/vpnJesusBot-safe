@@ -68,6 +68,14 @@ instruction_platforms = {
     "linux": "linux",
 }
 
+
+def build_instruction_next_markup(platform_key: str, step_index: int):
+    if platform_key == "android" and step_index == 0:
+        keyboard = [[btn_next, btn_3], [btn_cancel]]
+    else:
+        keyboard = [[btn_next], [btn_cancel]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 MONTH_MAP = {
     1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
     7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
@@ -670,7 +678,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             context.user_data['instruction_platform'] = platform_key
             context.user_data['instruction_step'] = 0
-            next_markup = ReplyKeyboardMarkup([[btn_next], [btn_cancel]], resize_keyboard=True)
+            next_markup = build_instruction_next_markup(platform_key, 0)
             if len(steps) == 1:
                 await _send_instruction_step(update, platform_key, steps[0], reply_markup=reply_markup)
                 context.user_data['instruction_mode'] = False
@@ -694,7 +702,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data['instruction_step'] = 0
                 await update.message.reply_text(msg_menu, reply_markup=reply_markup)
             else:
-                next_markup = ReplyKeyboardMarkup([[btn_next], [btn_cancel]], resize_keyboard=True)
+                next_markup = build_instruction_next_markup(platform_key, step_index)
                 is_last_step = step_index == len(steps) - 1
                 step_markup = reply_markup if is_last_step else next_markup
                 await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
