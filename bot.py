@@ -49,6 +49,7 @@ btn_2 = "Задать вопрос"
 btn_3 = "Получить конфиг"
 btn_instruction = "Инструкция"
 btn_next = "Дальше ➡️"
+btn_cancel = "Отменить"
 
 instruction_platforms = {
     "ios": "ios",
@@ -594,7 +595,16 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['awaiting_question'] = True
         context.user_data['instruction_mode'] = False
         logger.debug("User %s entered question mode", user_id_str)
-        await update.message.reply_text(msg_question, reply_markup=reply_markup)
+        cancel_markup = ReplyKeyboardMarkup([[btn_cancel]], resize_keyboard=True)
+        await update.message.reply_text(msg_question, reply_markup=cancel_markup)
+
+    # --- LOGIC 2.3: CANCEL CURRENT FLOW ---
+    elif user_text == btn_cancel:
+        context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = False
+        context.user_data['instruction_platform'] = None
+        context.user_data['instruction_step'] = 0
+        await update.message.reply_text(msg_menu, reply_markup=reply_markup)
 
     # --- LOGIC 2.4: INSTRUCTION MENU ---
     elif user_text == btn_instruction:
@@ -603,6 +613,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['instruction_platform'] = None
         context.user_data['instruction_step'] = 0
         platform_buttons = [[name] for name in instruction_platforms.keys()]
+        platform_buttons.append([btn_cancel])
         instruction_markup = ReplyKeyboardMarkup(platform_buttons, resize_keyboard=True)
         await update.message.reply_text(msg_menu, reply_markup=instruction_markup)
 
@@ -618,7 +629,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             context.user_data['instruction_platform'] = platform_key
             context.user_data['instruction_step'] = 0
-            next_markup = ReplyKeyboardMarkup([[btn_next]], resize_keyboard=True)
+            next_markup = ReplyKeyboardMarkup([[btn_next], [btn_cancel]], resize_keyboard=True)
             if len(steps) == 1:
                 await _send_instruction_step(update, platform_key, steps[0], reply_markup=reply_markup)
                 context.user_data['instruction_mode'] = False
@@ -642,7 +653,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data['instruction_step'] = 0
                 await update.message.reply_text(msg_menu, reply_markup=reply_markup)
             else:
-                next_markup = ReplyKeyboardMarkup([[btn_next]], resize_keyboard=True)
+                next_markup = ReplyKeyboardMarkup([[btn_next], [btn_cancel]], resize_keyboard=True)
                 is_last_step = step_index == len(steps) - 1
                 step_markup = reply_markup if is_last_step else next_markup
                 await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
