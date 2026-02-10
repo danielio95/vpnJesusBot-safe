@@ -6,7 +6,7 @@ from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup
 from logging import basicConfig, DEBUG, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # --- CONFIGURATION ---
 ADMIN_ID = getenv("TELEGRAM_ADMIN_ID")
@@ -35,6 +35,14 @@ msg_question = "Пожалуйста, задайте свой вопрос, от
 msg_question_sent = "Вопрос отправлен! Ожидайте ответа."
 msg_menu = "Выберите действие:"
 msg_next_payment = "Следующий платеж в"
+msg_welcome = (
+    "Привет! 👋\n\n"
+    "Твой профиль: <name and surname>.\n"
+    "Поздравляю с бесплатной подпиской на 3 дня! 🎉\n\n"
+    "Добро пожаловать в VPN Jesus — здесь мы поможем тебе безопасно и легко выйти в интернет "
+    "без ограничений. Нажми на кнопку «Инструкция», чтобы получить пошаговое подключение, "
+    "а затем выбери нужное действие в меню ниже."
+)
 
 admin_sent = "Ответ отправлен пользователю "
 admin_id_error = "В сообщении не удалось найти ID пользователя или ID сообщения."
@@ -63,6 +71,11 @@ MONTH_MAP = {
     1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun',
     7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
 }
+
+
+def build_main_menu_markup():
+    keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # --- DATA MANAGEMENT ---
 
@@ -527,8 +540,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.debug("Loaded %s users from bot_data", len(all_users_data))
 
     # Define the main keyboard menu
-    keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = build_main_menu_markup()
 
     # --- LOGIC 1: CHECK PAYMENT ---
     if user_text == btn_1:
@@ -723,6 +735,20 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(msg_menu, reply_markup=reply_markup)
 
 
+async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['awaiting_question'] = False
+    context.user_data['instruction_mode'] = False
+    reply_markup = build_main_menu_markup()
+
+    full_name = " ".join(
+        part for part in [update.effective_user.first_name, update.effective_user.last_name] if part
+    ).strip()
+    profile_name = full_name or (update.effective_user.username or "гость")
+
+    await update.message.reply_text(msg_welcome.replace("<name and surname>", profile_name))
+    await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+
+
 async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handler for Admin replies. Extracts User ID and Message ID to send a proper reply.
@@ -801,6 +827,8 @@ if __name__ == '__main__':
         handle_admin_reply
     )
     application.add_handler(admin_reply_handler)
+
+    application.add_handler(CommandHandler("start", handle_start))
     
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_start_or_text)
     application.add_handler(echo_handler)
