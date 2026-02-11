@@ -1204,39 +1204,48 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             user_entry = initialize_user_entry(all_users_data, user_id_str, user_name)
 
+        curr_status, _ = get_payment_status(user_entry)
         pending_payment = user_entry.get("pending_payment")
         if isinstance(pending_payment, dict) and pending_payment.get("payment_id"):
-            logger.info(
-                "[PAYMENT CHECK] user_id=%s has pending payment payment_id=%s status=%s",
-                user_id_str,
-                pending_payment.get("payment_id"),
-                pending_payment.get("last_status"),
-            )
-            latest_data = await to_thread(fetch_yookassa_payment, pending_payment.get("payment_id"))
-            status = latest_data.get("status") if isinstance(latest_data, dict) else None
-            paid = bool(latest_data.get("paid", False)) if isinstance(latest_data, dict) else False
-            logger.info(
-                "[PAYMENT CHECK] latest status user_id=%s payment_id=%s status=%s paid=%s",
-                user_id_str,
-                pending_payment.get("payment_id"),
-                status,
-                paid,
-            )
-            if status == "succeeded" and paid:
-                months = int(pending_payment.get("months", 1))
-                apply_subscription_extension(user_entry, months)
+            if curr_status == msg_paid:
+                logger.info(
+                    "[PAYMENT CHECK] user_id=%s has active subscription, clearing stale pending payment payment_id=%s",
+                    user_id_str,
+                    pending_payment.get("payment_id"),
+                )
                 user_entry["pending_payment"] = None
                 save_bot_data(all_users_data)
-                await update.message.reply_text(msg_payment_success, reply_markup=reply_markup)
             else:
-                link = pending_payment.get("confirmation_url")
-                txt = f"{msg_payment_pending}\nСтатус: {status or 'unknown'}"
-                if link:
-                    txt += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
-                await update.message.reply_text(txt, reply_markup=payment_markup)
-            return
+                logger.info(
+                    "[PAYMENT CHECK] user_id=%s has pending payment payment_id=%s status=%s",
+                    user_id_str,
+                    pending_payment.get("payment_id"),
+                    pending_payment.get("last_status"),
+                )
+                latest_data = await to_thread(fetch_yookassa_payment, pending_payment.get("payment_id"))
+                status = latest_data.get("status") if isinstance(latest_data, dict) else None
+                paid = bool(latest_data.get("paid", False)) if isinstance(latest_data, dict) else False
+                logger.info(
+                    "[PAYMENT CHECK] latest status user_id=%s payment_id=%s status=%s paid=%s",
+                    user_id_str,
+                    pending_payment.get("payment_id"),
+                    status,
+                    paid,
+                )
+                if status == "succeeded" and paid:
+                    months = int(pending_payment.get("months", 1))
+                    apply_subscription_extension(user_entry, months)
+                    user_entry["pending_payment"] = None
+                    save_bot_data(all_users_data)
+                    await update.message.reply_text(msg_payment_success, reply_markup=reply_markup)
+                else:
+                    link = pending_payment.get("confirmation_url")
+                    txt = f"{msg_payment_pending}\nСтатус: {status or 'unknown'}"
+                    if link:
+                        txt += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
+                    await update.message.reply_text(txt, reply_markup=payment_markup)
+                return
 
-        curr_status, _ = get_payment_status(user_entry)
         if curr_status != msg_paid:
             save_bot_data(all_users_data)
             await update.message.reply_text(f"⚠️ {msg_unpaid}", reply_markup=payment_markup)
