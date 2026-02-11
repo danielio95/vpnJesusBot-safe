@@ -1,7 +1,7 @@
 from sys import stdout
 from uuid import uuid4
 from html import unescape
-from subprocess import run
+from subprocess import run, PIPE, STDOUT
 from typing import Optional
 from urllib.parse import quote
 from requests import post, get
@@ -14,7 +14,7 @@ from json import load, dump, JSONDecodeError
 from datetime import datetime, timedelta, time
 from logging.handlers import RotatingFileHandler
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
-from logging import INFO, WARNING, StreamHandler, basicConfig, getLogger
+from logging import INFO, WARNING, DEBUG, StreamHandler, basicConfig, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -31,10 +31,19 @@ PAYMENT_POLL_INTERVAL_SECONDS = 10
 PAYMENT_POLL_ATTEMPTS = 60
 
 def configure_logging(stdout_log_mode: str = "enable"):
-    stdout_level = INFO if stdout_log_mode == "enable" else WARNING
+    if stdout_log_mode == "debug":
+        root_level = DEBUG
+        stdout_level = DEBUG
+    elif stdout_log_mode == "enable":
+        root_level = INFO
+        stdout_level = INFO
+    else:
+        root_level = INFO
+        stdout_level = WARNING
+
     basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=INFO,
+        level=root_level,
         handlers=[
             # Writes to output.log, max 5MB, keeps 2 old copies, utf-8 encoding
             RotatingFileHandler("log/output.log", maxBytes=5*1024*1024, backupCount=2, encoding='utf-8'),
@@ -572,17 +581,23 @@ def _is_expired_for_offload(user_data, now=None):
 
 def _offload_user(email):
     script_path = path.join(path.dirname(__file__), "offload_user.py")
-    result = run(["python3", script_path, email], capture_output=True, text=True)
+    result = run(["python3", script_path, email], stdout=PIPE, stderr=STDOUT, text=True)
+    child_output = (result.stdout or "").strip()
+
+    if child_output:
+        for line in child_output.splitlines():
+            logger.debug("[OFFLOAD SCRIPT] %s", line)
+
     if result.returncode != 0:
         logger.error(
-            "[OFFLOAD] failed email=%s returncode=%s stderr=%s",
+            "[OFFLOAD] failed email=%s returncode=%s output=%s",
             email,
             result.returncode,
-            result.stderr.strip(),
+            child_output,
         )
         return False
 
-    logger.info("[OFFLOAD] success email=%s stdout=%s", email, result.stdout.strip())
+    logger.info("[OFFLOAD] success email=%s", email)
     return True
 
 
@@ -1459,9 +1474,9 @@ if __name__ == '__main__':
     parser = ArgumentParser(description="Run VPN Jesus bot")
     parser.add_argument(
         "--stdout-log",
-        choices=["enable", "disable"],
+        choices=["enable", "disable", "debug"],
         default="enable",
-        help="Control stdout logging verbosity: enable=info logs, disable=warnings and errors only.",
+        help="Control stdout logging verbosity: debug=all logs, enable=info logs, disable=warnings and errors only.",
     )
     args = parser.parse_args()
 
