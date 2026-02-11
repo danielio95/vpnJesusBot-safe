@@ -99,14 +99,14 @@ btn_3 = "Получить конфиг"
 btn_instruction = "Инструкция"
 btn_next = "Дальше ➡️"
 btn_cancel = "Отменить ❌"
-btn_pay_1_month = "1 мес - 100 руб"
-btn_pay_2_month = "2 мес - 200 руб"
-btn_pay_3_month = "3 мес - 300 руб"
+btn_pay_1_month = "1 мес - 1 руб"
+btn_pay_2_month = "2 мес - 2 руб"
+btn_pay_3_month = "3 мес - 3 руб"
 
 PAYMENT_BUTTONS = {
-    btn_pay_1_month: {"months": 1, "amount": 100},
-    btn_pay_2_month: {"months": 2, "amount": 200},
-    btn_pay_3_month: {"months": 3, "amount": 300},
+    btn_pay_1_month: {"months": 1, "amount": 1},
+    btn_pay_2_month: {"months": 2, "amount": 2},
+    btn_pay_3_month: {"months": 3, "amount": 3},
 }
 
 instruction_platforms = {
