@@ -102,6 +102,9 @@ btn_cancel = "Отменить ❌"
 btn_pay_1_month = "1 мес - 1 руб"
 btn_pay_2_month = "2 мес - 2 руб"
 btn_pay_3_month = "3 мес - 3 руб"
+btn_restart_xray = "restart xray"
+btn_stop_xray = "stop xray"
+btn_start_xray = "start xray"
 
 PAYMENT_BUTTONS = {
     btn_pay_1_month: {"months": 1, "amount": 1},
@@ -146,14 +149,30 @@ RU_MONTH_MAP = {
 }
 
 
-def build_main_menu_markup():
+def is_admin_user(user_id_str: str) -> bool:
+    return bool(ADMIN_ID) and user_id_str == str(ADMIN_ID)
+
+
+def build_main_menu_markup(user_id_str: Optional[str] = None):
     keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
+    if user_id_str and is_admin_user(user_id_str):
+        keyboard.extend([[btn_restart_xray], [btn_stop_xray], [btn_start_xray]])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
 def build_payment_options_markup():
     keyboard = [[btn_pay_1_month], [btn_pay_2_month], [btn_pay_3_month], [btn_cancel]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def run_xray_service_command(action: str):
+    return run(
+        ["sudo", "systemctl", action, "xray"],
+        stdout=PIPE,
+        stderr=STDOUT,
+        text=True,
+        check=False,
+    )
 
 # --- DATA MANAGEMENT ---
 
@@ -489,14 +508,14 @@ async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id
             apply_subscription_extension(user_entry, months)
             user_entry["pending_payment"] = None
             save_bot_data(all_users_data)
-            await context.bot.send_message(chat_id=user_id_str, text=msg_payment_success, reply_markup=build_main_menu_markup())
+            await context.bot.send_message(chat_id=user_id_str, text=msg_payment_success, reply_markup=build_main_menu_markup(user_id_str))
             logger.info("[PAYMENT MONITOR] payment succeeded user_id=%s payment_id=%s months=%s", user_id_str, payment_id, months)
             return
 
         if status in {"canceled"}:
             user_entry["pending_payment"] = None
             save_bot_data(all_users_data)
-            await context.bot.send_message(chat_id=user_id_str, text="Оплата была отменена. Попробуй снова, нажав на Получить конфиг.", reply_markup=build_main_menu_markup())
+            await context.bot.send_message(chat_id=user_id_str, text="Оплата была отменена. Попробуй снова, нажав на Получить конфиг.", reply_markup=build_main_menu_markup(user_id_str))
             logger.info("[PAYMENT MONITOR] payment canceled user_id=%s payment_id=%s", user_id_str, payment_id)
             return
 
@@ -1082,7 +1101,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.debug("Loaded %s users from bot_data", len(all_users_data))
 
     # Define the main keyboard menu
-    reply_markup = build_main_menu_markup()
+    reply_markup = build_main_menu_markup(user_id_str)
 
     # --- LOGIC 1: CHECK PAYMENT ---
     if user_text in {btn_1, btn_1_legacy}:
@@ -1334,6 +1353,32 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         config_string = build_vless_config(user_id, sid)
         await update.message.reply_text(config_string, reply_markup=step_markup)
 
+    elif user_text in {btn_restart_xray, btn_stop_xray, btn_start_xray}:
+        context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = False
+        context.user_data['instruction_step_in_progress'] = False
+
+        if not is_admin_user(user_id_str):
+            await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+            return
+
+        action_map = {
+            btn_restart_xray: "restart",
+            btn_stop_xray: "stop",
+            btn_start_xray: "start",
+        }
+        action = action_map[user_text]
+        result = await to_thread(run_xray_service_command, action)
+        output = (result.stdout or "").strip()
+        if result.returncode == 0:
+            response = f"✅ xray {action} executed successfully."
+        else:
+            response = f"❌ Failed to {action} xray (code: {result.returncode})."
+        if output:
+            response += f"\n{output}"
+
+        await update.message.reply_text(response, reply_markup=reply_markup)
+
     elif user_text in PAYMENT_BUTTONS:
         context.user_data['awaiting_question'] = False
         context.user_data['instruction_mode'] = False
@@ -1402,7 +1447,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if not payment_id or not confirmation_url:
             logger.error("[PAYMENT FLOW] missing payment id or confirmation url user_id=%s payload=%s", user_id_str, payment_data)
-            await update.message.reply_text(msg_error, reply_markup=build_main_menu_markup())
+            await update.message.reply_text(msg_error, reply_markup=build_main_menu_markup(user_id_str))
             return
 
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(confirmation_url)}"
@@ -1456,7 +1501,8 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['awaiting_question'] = False
     context.user_data['instruction_mode'] = False
     context.user_data['instruction_step_in_progress'] = False
-    reply_markup = build_main_menu_markup()
+    user_id_str = str(update.effective_user.id)
+    reply_markup = build_main_menu_markup(user_id_str)
 
     full_name = " ".join(
         part for part in [update.effective_user.first_name, update.effective_user.last_name] if part
