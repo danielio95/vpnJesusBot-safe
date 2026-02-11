@@ -1211,7 +1211,13 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(text, reply_markup=build_payment_options_markup())
             return
 
-        description = f"VPN Jesus подписка: {months} мес. Telegram user {user_id_str}"
+        subscription_labels = {
+            1: "Подписка старт (1 мес )",
+            2: "Комфорт ( 2 мес )",
+            3: "Премиум (3 мес )",
+        }
+        base_description = subscription_labels.get(months, f"Подписка {months} мес")
+        description = f"{base_description} и user_id: {user_id_str}"
         payment_data = await asyncio.to_thread(
             create_yookassa_payment,
             amount,
