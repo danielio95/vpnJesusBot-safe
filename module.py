@@ -10,15 +10,6 @@ basicConfig(
 )
 logger = getLogger(__name__)
 
-#def restart_xray():
-#    try:
-#        run(['sudo','systemctl','restart','xray.service'],check=True)
-#        print('xray restarted')
-#        logger.debug("xray service restarted successfully")
-#    except CalledProcessError as error:
-#        logger.exception("Failed to restart xray service")
-#        print(f'error: {error}')
-
 def find_child(data,parent):
     if parent not in data:
         logger.error("Missing key in data: %s", parent)
@@ -27,10 +18,10 @@ def find_child(data,parent):
 
     return data[parent]
 
-XRAY_BIN = getenv("XRAY_BIN", "./xray/xray")
+XRAY_BIN = getenv("XRAY_BIN", "/usr/local/xray/xray")
 API_SERVER = getenv("XRAY_API_SERVER", "127.0.0.1")
 API_PORT = getenv("XRAY_API_PORT", "10002")
-INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
+INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "vless-in")
 
 def run_xray_api(args):
     logger.debug("Running xray api command args=%s", args)

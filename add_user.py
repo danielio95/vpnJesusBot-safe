@@ -1,10 +1,10 @@
-from module import API_PORT, API_SERVER, run_xray_api
-from logging import basicConfig, DEBUG, getLogger
-from tempfile import NamedTemporaryFile
-from os import getenv, urandom, remove
-from sys import argv, exit
-from uuid import uuid4
 from json import dump
+from uuid import uuid4
+from sys import argv, exit
+from os import getenv, urandom, remove
+from tempfile import NamedTemporaryFile
+from logging import basicConfig, DEBUG, getLogger
+from module import API_PORT, API_SERVER, run_xray_api
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -12,15 +12,15 @@ basicConfig(
 )
 logger = getLogger(__name__)
 
-INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
-LEVEL = int(getenv("XRAY_USER_LEVEL", "0"))
+INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "vless-in")
+LEVEL = int(getenv("XRAY_USER_LEVEL", "1"))
 FLOW = getenv("XRAY_FLOW", "xtls-rprx-vision")
-IP = getenv("XRAY_PUBLIC_IP", "x.x.x.x")
+IP = getenv("XRAY_PUBLIC_IP", "45.151.183.231")
 PORT = getenv("XRAY_PUBLIC_PORT", "443")
-PBK = getenv("XRAY_REALITY_PBK", "x")
-SNI = getenv("XRAY_REALITY_SNI", "x")
-INBOUND_LISTEN = getenv("XRAY_INBOUND_LISTEN", "0.0.0.0")
-INBOUND_PORT = int(getenv("XRAY_INBOUND_PORT", "8443"))
+PBK = getenv("XRAY_REALITY_PBK", "")
+SNI = getenv("XRAY_REALITY_SNI", "bostad.blocket.se")
+INBOUND_LISTEN = getenv("XRAY_INBOUND_LISTEN", "45.151.183.231")
+INBOUND_PORT = int(getenv("XRAY_INBOUND_PORT", "443"))
 INBOUND_PROTOCOL = getenv("XRAY_INBOUND_PROTOCOL", "vless")
 
 def build_add_user_payload(email, user_id):

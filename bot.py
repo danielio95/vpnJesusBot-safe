@@ -1,19 +1,19 @@
-from os import getenv, path, listdir
-from datetime import datetime, timedelta, time
-from json import load, dump, JSONDecodeError
-from logging.handlers import RotatingFileHandler
-from html import unescape
-from argparse import ArgumentParser
 from sys import stdout
-from typing import Optional
 from uuid import uuid4
-import asyncio
-from urllib.parse import quote
+from html import unescape
 from subprocess import run
-import requests
-from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
-from telegram.constants import ParseMode
+from typing import Optional
+from urllib.parse import quote
+from requests import post, get
+from argparse import ArgumentParser
+from os import getenv, path, listdir
+from asyncio import to_thread, sleep
 from telegram.error import BadRequest
+from telegram.constants import ParseMode
+from json import load, dump, JSONDecodeError
+from datetime import datetime, timedelta, time
+from logging.handlers import RotatingFileHandler
+from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from logging import INFO, WARNING, StreamHandler, basicConfig, getLogger
 from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
@@ -25,7 +25,7 @@ DATA_FILE = "users.json"
 MAX_PAYMENT_YEAR = 2026
 YOOKASSA_SHOP_ID = getenv("YOOKASSA_SHOP_ID", "").strip()
 YOOKASSA_SECRET_KEY = getenv("YOOKASSA_SECRET_KEY", "").strip()
-YOOKASSA_RETURN_URL = getenv("YOOKASSA_RETURN_URL", "https://t.me/vpnjesusbot").strip()
+YOOKASSA_RETURN_URL = getenv("YOOKASSA_RETURN_URL", "https://google.com").strip()
 YOOKASSA_API_BASE = "https://api.yookassa.ru/v3"
 PAYMENT_POLL_INTERVAL_SECONDS = 10
 PAYMENT_POLL_ATTEMPTS = 60
@@ -389,7 +389,7 @@ def create_yookassa_payment(amount_rub, description, user_id, months_count):
     logger.debug("[PAYMENT CREATE] Request payload: %s", payload)
 
     try:
-        response = requests.post(
+        response = post(
             f"{YOOKASSA_API_BASE}/payments",
             auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
             headers={
@@ -421,7 +421,7 @@ def fetch_yookassa_payment(payment_id):
 
     logger.debug("[PAYMENT STATUS] Fetching payment_id=%s", payment_id)
     try:
-        response = requests.get(
+        response = get(
             f"{YOOKASSA_API_BASE}/payments/{payment_id}",
             auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
             timeout=30,
@@ -453,7 +453,7 @@ async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id
         PAYMENT_POLL_INTERVAL_SECONDS,
     )
     for attempt in range(1, PAYMENT_POLL_ATTEMPTS + 1):
-        data = await asyncio.to_thread(fetch_yookassa_payment, payment_id)
+        data = await to_thread(fetch_yookassa_payment, payment_id)
         logger.info("[PAYMENT MONITOR] attempt=%s user_id=%s payment_id=%s data=%s", attempt, user_id_str, payment_id, data)
 
         all_users_data = context.bot_data.get('user_info', {})
@@ -491,7 +491,7 @@ async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id
             logger.info("[PAYMENT MONITOR] payment canceled user_id=%s payment_id=%s", user_id_str, payment_id)
             return
 
-        await asyncio.sleep(PAYMENT_POLL_INTERVAL_SECONDS)
+        await sleep(PAYMENT_POLL_INTERVAL_SECONDS)
 
     logger.warning("[PAYMENT MONITOR] timeout user_id=%s payment_id=%s", user_id_str, payment_id)
     await context.bot.send_message(chat_id=user_id_str, text="Платёж всё ещё обрабатывается. Когда он подтвердится, я автоматически открою доступ к конфигу.")
@@ -622,7 +622,7 @@ def run_expired_subscriptions_offload(all_users_data, reason="scheduled"):
 
 async def daily_expired_subscriptions_offload(context: ContextTypes.DEFAULT_TYPE):
     all_users_data = context.application.bot_data.get('user_info', {})
-    await asyncio.to_thread(run_expired_subscriptions_offload, all_users_data, "daily")
+    await to_thread(run_expired_subscriptions_offload, all_users_data, "daily")
 
 def get_payment_status(user_data):
     """
@@ -1212,7 +1212,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 pending_payment.get("payment_id"),
                 pending_payment.get("last_status"),
             )
-            latest_data = await asyncio.to_thread(fetch_yookassa_payment, pending_payment.get("payment_id"))
+            latest_data = await to_thread(fetch_yookassa_payment, pending_payment.get("payment_id"))
             status = latest_data.get("status") if isinstance(latest_data, dict) else None
             paid = bool(latest_data.get("paid", False)) if isinstance(latest_data, dict) else False
             logger.info(
@@ -1301,7 +1301,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         }
         base_description = subscription_labels.get(months, f"Подписка {months} мес")
         description = f"{base_description} от user_id: {user_id_str}"
-        payment_data = await asyncio.to_thread(
+        payment_data = await to_thread(
             create_yookassa_payment,
             amount,
             description,

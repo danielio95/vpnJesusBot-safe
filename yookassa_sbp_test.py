@@ -1,22 +1,20 @@
-import os
-import uuid
-import time
-import threading
+from uuid import uuid4
+from os import getenv
+from qrcode import make
+from requests import post
+from threading import Event
 from typing import Dict, Any
-
-import requests
 from flask import Flask, request, jsonify, redirect
-import qrcode
 
 # =========================
 # CONFIG (set env vars)
 # =========================
-SHOP_ID = os.getenv("YOOKASSA_SHOP_ID", "").strip()
-SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "").strip()
+SHOP_ID = getenv("YOOKASSA_SHOP_ID", "").strip()
+SECRET_KEY = getenv("YOOKASSA_SECRET_KEY", "").strip()
 
 # Public base URL of THIS server (for return_url and webhook).
 # Example with ngrok: https://abcd-12-34-56-78.ngrok-free.app
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").strip()
+PUBLIC_BASE_URL = getenv("PUBLIC_BASE_URL", "http://localhost:8000").strip()
 
 # YooKassa API base
 API_BASE = "https://api.yookassa.ru/v3"
@@ -31,7 +29,7 @@ app = Flask(__name__)
 # In-memory order state (for testing).
 # In production you’d store this in DB.
 orders: Dict[str, Dict[str, Any]] = {}
-events: Dict[str, threading.Event] = {}
+events: Dict[str, Event] = {}
 
 
 def create_sbp_payment(amount_rub: str, description: str, order_id: str) -> Dict[str, Any]:
@@ -39,7 +37,7 @@ def create_sbp_payment(amount_rub: str, description: str, order_id: str) -> Dict
     Creates an SBP payment in YooKassa.
     Returns YooKassa payment object (JSON).
     """
-    idempotence_key = str(uuid.uuid4())
+    idempotence_key = str(uuid4())
 
     payload = {
         "amount": {"value": amount_rub, "currency": "RUB"},
@@ -55,7 +53,7 @@ def create_sbp_payment(amount_rub: str, description: str, order_id: str) -> Dict
         },
     }
 
-    r = requests.post(
+    r = post(
         f"{API_BASE}/payments",
         auth=(SHOP_ID, SECRET_KEY),
         headers={
@@ -78,7 +76,7 @@ def create_sbp_payment(amount_rub: str, description: str, order_id: str) -> Dict
 
 
 def make_qr_png(url: str, out_path: str) -> None:
-    img = qrcode.make(url)
+    img = make(url)
     img.save(out_path)
 
 
@@ -90,7 +88,7 @@ def http_create_test_payment():
       http://localhost:8000/create-test-payment?amount=2.00
     """
     amount = request.args.get("amount", "2.00")
-    order_id = str(uuid.uuid4())
+    order_id = str(uuid4())
 
     orders[order_id] = {
         "status": "created",
@@ -98,7 +96,7 @@ def http_create_test_payment():
         "confirmation_url": None,
         "paid": False,
     }
-    events[order_id] = threading.Event()
+    events[order_id] = Event()
 
     payment = create_sbp_payment(
         amount_rub=amount,
