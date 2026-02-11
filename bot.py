@@ -1,5 +1,5 @@
 from os import getenv, path, listdir
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from json import load, dump, JSONDecodeError
 from logging.handlers import RotatingFileHandler
 from html import unescape
@@ -9,6 +9,7 @@ from typing import Optional
 from uuid import uuid4
 import asyncio
 from urllib.parse import quote
+from subprocess import run
 import requests
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
@@ -181,6 +182,8 @@ def _normalize_xray_data(xray_data, default_email=""):
         "email": data.get("email", default_email) or default_email,
         "id": data.get("id", ""),
         "shortid": data.get("shortid", ""),
+        "offloaded": bool(data.get("offloaded", False)),
+        "offloaded_at": data.get("offloaded_at"),
     }
 
 def _normalize_user_entry(user_id_str, entry):
@@ -542,6 +545,84 @@ MONTH_MAP = {
 
 def _get_month_status(payments, year, month_idx):
     return str(payments.get(str(year), {}).get(MONTH_MAP[month_idx], UNPAID_STATUS))
+
+
+def _is_expired_for_offload(user_data, now=None):
+    current_time = now or datetime.now()
+    try:
+        due_day = int(user_data.get("date", 1) or 1)
+    except (TypeError, ValueError):
+        due_day = 1
+
+    if current_time.day <= due_day:
+        return False
+
+    payments = user_data.get("payments", {})
+    current_unpaid = _get_month_status(payments, current_time.year, current_time.month) == UNPAID_STATUS
+
+    next_month_idx = current_time.month + 1
+    next_year = current_time.year
+    if next_month_idx > 12:
+        next_month_idx = 1
+        next_year += 1
+
+    next_unpaid = _get_month_status(payments, next_year, next_month_idx) == UNPAID_STATUS
+    return current_unpaid or next_unpaid
+
+
+def _offload_user(email):
+    script_path = path.join(path.dirname(__file__), "offload_user.py")
+    result = run(["python3", script_path, email], capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(
+            "[OFFLOAD] failed email=%s returncode=%s stderr=%s",
+            email,
+            result.returncode,
+            result.stderr.strip(),
+        )
+        return False
+
+    logger.info("[OFFLOAD] success email=%s stdout=%s", email, result.stdout.strip())
+    return True
+
+
+def run_expired_subscriptions_offload(all_users_data, reason="scheduled"):
+    offloaded_count = 0
+    for user_id_str, user_entry in all_users_data.items():
+        normalized_entry = _normalize_user_entry(user_id_str, user_entry)
+        all_users_data[user_id_str] = normalized_entry
+
+        if not _is_expired_for_offload(normalized_entry):
+            continue
+
+        xray_info = normalized_entry.get("xray", {})
+        if xray_info.get("offloaded"):
+            logger.debug("[OFFLOAD] skip already offloaded user_id=%s reason=%s", user_id_str, reason)
+            continue
+
+        email = xray_info.get("email") or user_id_str
+        if not email:
+            logger.warning("[OFFLOAD] skip missing email user_id=%s reason=%s", user_id_str, reason)
+            continue
+
+        if _offload_user(email):
+            xray_info["id"] = ""
+            xray_info["shortid"] = ""
+            xray_info["offloaded"] = True
+            xray_info["offloaded_at"] = datetime.now().isoformat()
+            offloaded_count += 1
+            logger.info("[OFFLOAD] user_id=%s marked as offloaded reason=%s", user_id_str, reason)
+
+    if offloaded_count:
+        save_bot_data(all_users_data)
+
+    logger.info("[OFFLOAD] completed reason=%s offloaded_count=%s", reason, offloaded_count)
+    return offloaded_count
+
+
+async def daily_expired_subscriptions_offload(context: ContextTypes.DEFAULT_TYPE):
+    all_users_data = context.application.bot_data.get('user_info', {})
+    await asyncio.to_thread(run_expired_subscriptions_offload, all_users_data, "daily")
 
 def get_payment_status(user_data):
     """
@@ -1174,6 +1255,8 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
             xray_info["id"] = user_id
             xray_info["shortid"] = sid
+            xray_info["offloaded"] = False
+            xray_info["offloaded_at"] = None
 
         save_bot_data(all_users_data)
 
@@ -1386,8 +1469,18 @@ if __name__ == '__main__':
     
     user_data = load_user_data()
     application.bot_data['user_info'] = user_data
-    #print(user_data)
-    #print(application.bot_data['user_info'])
+    run_expired_subscriptions_offload(application.bot_data['user_info'], reason="startup")
+
+    now = datetime.now()
+    next_run = datetime.combine(now.date(), time(23, 59))
+    if now >= next_run:
+        next_run += timedelta(days=1)
+    application.job_queue.run_repeating(
+        daily_expired_subscriptions_offload,
+        interval=timedelta(days=1),
+        first=next_run,
+        name="daily-expired-offload",
+    )
     
     admin_reply_handler = MessageHandler(
         filters.TEXT & filters.REPLY & filters.User(user_id=int(ADMIN_ID)), 
