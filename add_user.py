@@ -85,6 +85,41 @@ def add_user(email):
     logger.debug("User added successfully email=%s sid=%s", email, sid)
     return user_id, sid
 
+
+def add_user_with_id(email, user_id):
+    logger.debug("Adding existing user email=%s user_id=%s", email, user_id)
+    payload = build_add_user_payload(email, user_id)
+    temp_file = None
+    temp_path = None
+    try:
+        temp_file = NamedTemporaryFile("w", suffix=".json", delete=False)
+        dump(payload, temp_file)
+        temp_file.flush()
+        temp_path = temp_file.name
+    finally:
+        if temp_file is not None:
+            temp_file.close()
+
+    try:
+        result = run_xray_api([
+            "adu",
+            f"--server={API_SERVER}:{API_PORT}",
+            temp_path,
+        ])
+    finally:
+        if temp_path:
+            try:
+                remove(temp_path)
+            except FileNotFoundError:
+                logger.warning("Temporary payload file already removed: %s", temp_path)
+
+    if result.returncode != 0:
+        logger.error("Failed to add existing user: %s", result.stderr.strip() or "unknown error")
+        return False
+
+    logger.debug("Existing user loaded successfully email=%s user_id=%s", email, user_id)
+    return True
+
 def output_vless_string(user_id, sid):
     logger.debug("Outputting VLESS string for user_id=%s sid=%s", user_id, sid)
     print(

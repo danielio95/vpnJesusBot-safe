@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, time
 from logging.handlers import RotatingFileHandler
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from logging import INFO, WARNING, DEBUG, StreamHandler, basicConfig, getLogger
-from add_user import add_user as add_xray_user, FLOW, IP, PBK, PORT, SNI
+from add_user import add_user as add_xray_user, add_user_with_id as add_xray_user_with_id, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # --- CONFIGURATION ---
@@ -599,6 +599,53 @@ def _offload_user(email):
 
     logger.info("[OFFLOAD] success email=%s", email)
     return True
+
+
+def preload_active_users_into_xray(all_users_data):
+    loaded_count = 0
+    skipped_count = 0
+
+    for user_id_str, user_entry in all_users_data.items():
+        normalized_entry = _normalize_user_entry(user_id_str, user_entry)
+        all_users_data[user_id_str] = normalized_entry
+
+        curr_status, _ = get_payment_status(normalized_entry)
+        if curr_status != msg_paid:
+            skipped_count += 1
+            continue
+
+        xray_info = normalized_entry.get("xray", {})
+        email = xray_info.get("email") or user_id_str
+        user_id = xray_info.get("id")
+        sid = xray_info.get("shortid")
+
+        if not email or not user_id or not sid:
+            logger.warning(
+                "[XRAY PRELOAD] skip user_id=%s reason=missing_xray_fields email=%s id=%s sid=%s",
+                user_id_str,
+                email,
+                bool(user_id),
+                bool(sid),
+            )
+            skipped_count += 1
+            continue
+
+        success = add_xray_user_with_id(email, user_id)
+        if not success:
+            logger.error("[XRAY PRELOAD] failed user_id=%s email=%s", user_id_str, email)
+            skipped_count += 1
+            continue
+
+        xray_info["offloaded"] = False
+        xray_info["offloaded_at"] = None
+        loaded_count += 1
+        logger.info("[XRAY PRELOAD] loaded user_id=%s email=%s", user_id_str, email)
+
+    if loaded_count:
+        save_bot_data(all_users_data)
+
+    logger.info("[XRAY PRELOAD] completed loaded=%s skipped=%s", loaded_count, skipped_count)
+    return loaded_count, skipped_count
 
 
 def run_expired_subscriptions_offload(all_users_data, reason="scheduled"):
@@ -1499,6 +1546,7 @@ if __name__ == '__main__':
     
     user_data = load_user_data()
     application.bot_data['user_info'] = user_data
+    preload_active_users_into_xray(application.bot_data['user_info'])
     run_expired_subscriptions_offload(application.bot_data['user_info'], reason="startup")
 
     now = datetime.now()
