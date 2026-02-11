@@ -82,7 +82,8 @@ MSG = "telegram:@vpnjesusbot"
 
 # --- BUTTONS ---
 
-btn_1 = "Проверить мой платеж"
+btn_1 = "Продлить/проверить мой платеж"
+btn_1_legacy = "Проверить мой платеж"
 btn_2 = "Задать вопрос"
 btn_3 = "Получить конфиг"
 btn_instruction = "Инструкция"
@@ -141,7 +142,7 @@ def build_main_menu_markup():
 
 
 def build_payment_options_markup():
-    keyboard = [[btn_pay_1_month], [btn_pay_2_month], [btn_pay_3_month]]
+    keyboard = [[btn_pay_1_month], [btn_pay_2_month], [btn_pay_3_month], [btn_cancel]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # --- DATA MANAGEMENT ---
@@ -343,6 +344,13 @@ def mark_months_paid(user_entry, months_count):
     user_entry["payments"] = payments
 
 
+def apply_subscription_extension(user_entry, months_count):
+    curr_status, _ = get_payment_status(user_entry)
+    if curr_status != msg_paid:
+        user_entry["date"] = datetime.now().day
+        logger.info("[PAYMENT APPLY] user inactive, resetting due day to %s", user_entry["date"])
+    mark_months_paid(user_entry, months_count)
+
 def create_yookassa_payment(amount_rub, description, user_id, months_count):
     if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
         logger.error(
@@ -466,7 +474,7 @@ async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id
 
         if status == "succeeded" and paid:
             months = int(pending_payment.get("months", 1))
-            mark_months_paid(user_entry, months)
+            apply_subscription_extension(user_entry, months)
             user_entry["pending_payment"] = None
             save_bot_data(all_users_data)
             await context.bot.send_message(chat_id=user_id_str, text=msg_payment_success, reply_markup=build_main_menu_markup())
@@ -934,7 +942,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = build_main_menu_markup()
 
     # --- LOGIC 1: CHECK PAYMENT ---
-    if user_text == btn_1:
+    if user_text in {btn_1, btn_1_legacy}:
         context.user_data['awaiting_question'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
@@ -953,6 +961,11 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                      await update.message.reply_text(f"✅ {msg_paid}\n{msg_next_payment} {next_info}", reply_markup=reply_markup)
             else:
                 await update.message.reply_text(f"⚠️ {msg_unpaid}", reply_markup=reply_markup)
+
+            await update.message.reply_text(
+                "Продлить подписку можно по кнопкам ниже:",
+                reply_markup=build_payment_options_markup(),
+            )
         else:
             logger.debug("No user data found for user_id=%s", user_id_str)
             await update.message.reply_text(msg_noID, reply_markup=reply_markup)
@@ -1130,7 +1143,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             if status == "succeeded" and paid:
                 months = int(pending_payment.get("months", 1))
-                mark_months_paid(user_entry, months)
+                apply_subscription_extension(user_entry, months)
                 user_entry["pending_payment"] = None
                 save_bot_data(all_users_data)
                 await update.message.reply_text(msg_payment_success, reply_markup=reply_markup)
