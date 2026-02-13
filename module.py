@@ -18,7 +18,7 @@ def find_child(data,parent):
 
     return data[parent]
 
-XRAY_BIN = getenv("XRAY_BIN", "xray")
+XRAY_BIN = getenv("XRAY_BIN", "/usr/local/xray/xray")
 API_SERVER = getenv("XRAY_API_SERVER", "127.0.0.1")
 API_PORT = getenv("XRAY_API_PORT", "10002")
 INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "vless-in")
