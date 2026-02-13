@@ -1657,6 +1657,14 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_str = str(update.effective_user.id)
     reply_markup = build_main_menu_markup(user_id_str)
 
+    all_users_data = context.bot_data.get('user_info', {})
+    user_name = update.effective_user.first_name
+    if user_id_str in all_users_data:
+        get_user_entry(all_users_data, user_id_str, user_name)
+    else:
+        initialize_user_entry(all_users_data, user_id_str, user_name)
+    save_bot_data(all_users_data)
+
     full_name = " ".join(
         part for part in [update.effective_user.first_name, update.effective_user.last_name] if part
     ).strip()
