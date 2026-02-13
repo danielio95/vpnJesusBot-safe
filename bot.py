@@ -1264,7 +1264,9 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['instruction_platform'] = None
         context.user_data['instruction_step'] = 0
         context.user_data['instruction_step_in_progress'] = False
-        platform_buttons = [[name] for name in instruction_platforms.keys()]
+        #platform_buttons = [[name] for name in instruction_platforms.keys()]
+        platform_names = list(instruction_platforms.keys())
+        platform_buttons = [platform_names[i:i + 2] for i in range(0, len(platform_names), 2)]
         platform_buttons.append([btn_cancel])
         instruction_markup = ReplyKeyboardMarkup(platform_buttons, resize_keyboard=True)
         await update.message.reply_text(msg_choose_device, reply_markup=instruction_markup)
