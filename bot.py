@@ -102,6 +102,7 @@ btn_cancel = "Отменить ❌"
 btn_pay_1_month = "1 мес - 1 руб"
 btn_pay_2_month = "2 мес - 2 руб"
 btn_pay_3_month = "3 мес - 3 руб"
+btn_cancel_pending_payment = "Отменить незавершённый платёж"
 btn_restart_xray = "restart xray"
 btn_stop_xray = "stop xray"
 btn_start_xray = "start xray"
@@ -162,6 +163,11 @@ def build_main_menu_markup(user_id_str: Optional[str] = None):
 
 def build_payment_options_markup():
     keyboard = [[btn_pay_1_month], [btn_pay_2_month], [btn_pay_3_month], [btn_cancel]]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def build_pending_payment_markup():
+    keyboard = [[btn_cancel_pending_payment], [btn_cancel]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -470,6 +476,39 @@ def fetch_yookassa_payment(payment_id):
     data = response.json()
     logger.debug("[PAYMENT STATUS] response payment_id=%s payload=%s", payment_id, data)
     return data
+
+
+def cancel_yookassa_payment(payment_id):
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET_KEY:
+        return {"error": "missing_credentials"}
+
+    idempotence_key = str(uuid4())
+    logger.info("[PAYMENT CANCEL] cancel payment_id=%s idempotence=%s", payment_id, idempotence_key)
+    try:
+        response = post(
+            f"{YOOKASSA_API_BASE}/payments/{payment_id}/cancel",
+            auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
+            headers={
+                "Idempotence-Key": idempotence_key,
+                "Content-Type": "application/json",
+            },
+            json={},
+            timeout=30,
+        )
+    except Exception:
+        logger.exception("[PAYMENT CANCEL] request failed payment_id=%s", payment_id)
+        return {"error": "request_failed"}
+
+    logger.info(
+        "[PAYMENT CANCEL] response status=%s payment_id=%s body=%s",
+        response.status_code,
+        payment_id,
+        response.text,
+    )
+    if not response.ok:
+        return {"error": "api_error", "status_code": response.status_code, "body": response.text}
+
+    return response.json()
 
 
 async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id_str: str, payment_id: str):
@@ -1324,7 +1363,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                     txt = f"{msg_payment_pending}\nСтатус: {status or 'unknown'}"
                     if link:
                         txt += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
-                    await update.message.reply_text(txt, reply_markup=payment_markup)
+                    await update.message.reply_text(txt, reply_markup=build_pending_payment_markup())
                 return
 
         if curr_status != msg_paid:
@@ -1407,7 +1446,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             text = f"У тебя уже есть незавершённый платёж.\nСтатус: {existing_pending.get('last_status', 'pending')}"
             if link:
                 text += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
-            await update.message.reply_text(text, reply_markup=build_payment_options_markup())
+            await update.message.reply_text(text, reply_markup=build_pending_payment_markup())
             return
 
         subscription_labels = {
@@ -1463,6 +1502,104 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=build_payment_options_markup(),
         )
         context.application.create_task(monitor_payment_and_unlock(context, user_id_str, payment_id))
+
+
+    elif user_text == btn_cancel_pending_payment:
+        context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = False
+        context.user_data['instruction_step_in_progress'] = False
+
+        user_name = update.effective_user.first_name
+        if user_id_str in all_users_data:
+            user_entry = get_user_entry(all_users_data, user_id_str, user_name)
+        else:
+            user_entry = initialize_user_entry(all_users_data, user_id_str, user_name)
+
+        existing_pending = user_entry.get("pending_payment")
+        if not isinstance(existing_pending, dict) or not existing_pending.get("payment_id"):
+            await update.message.reply_text("У тебя нет незавершённого платежа.", reply_markup=build_payment_options_markup())
+            return
+
+        pending_payments_snapshot = []
+        for pending_user_id, pending_user_entry in all_users_data.items():
+            pending_data = pending_user_entry.get("pending_payment") if isinstance(pending_user_entry, dict) else None
+            if isinstance(pending_data, dict) and pending_data.get("payment_id"):
+                pending_payments_snapshot.append(
+                    {
+                        "user_id": pending_user_id,
+                        "payment_id": pending_data.get("payment_id"),
+                        "status": pending_data.get("last_status"),
+                        "months": pending_data.get("months"),
+                        "amount": pending_data.get("amount"),
+                        "created_at": pending_data.get("created_at"),
+                    }
+                )
+        logger.debug(
+            "[PAYMENT CANCEL] pending payments snapshot before cancel requester=%s count=%s data=%s",
+            user_id_str,
+            len(pending_payments_snapshot),
+            pending_payments_snapshot,
+        )
+
+        payment_id = existing_pending.get("payment_id")
+        cancel_data = await to_thread(cancel_yookassa_payment, payment_id)
+        status = cancel_data.get("status") if isinstance(cancel_data, dict) else None
+        if isinstance(cancel_data, dict) and not cancel_data.get("error") and status in {"canceled", "succeeded", "waiting_for_capture"}:
+            user_entry["pending_payment"] = None
+            save_bot_data(all_users_data)
+            if status == "succeeded":
+                months = int(existing_pending.get("months", 1))
+                apply_subscription_extension(user_entry, months)
+                save_bot_data(all_users_data)
+                await update.message.reply_text(
+                    "Платёж уже был успешно завершён, отмена не требуется. Подписка активирована.",
+                    reply_markup=build_main_menu_markup(user_id_str),
+                )
+            else:
+                await update.message.reply_text(
+                    "Незавершённый платёж отменён. Теперь можешь выбрать другой срок подписки.",
+                    reply_markup=build_payment_options_markup(),
+                )
+            return
+
+        latest_data = await to_thread(fetch_yookassa_payment, payment_id)
+        latest_status = latest_data.get("status") if isinstance(latest_data, dict) else None
+        if latest_status == "canceled":
+            user_entry["pending_payment"] = None
+            save_bot_data(all_users_data)
+            await update.message.reply_text(
+                "Незавершённый платёж уже отменён. Выбери новый срок подписки.",
+                reply_markup=build_payment_options_markup(),
+            )
+            return
+
+        if latest_status == "succeeded" and bool(latest_data.get("paid", False)):
+            months = int(existing_pending.get("months", 1))
+            apply_subscription_extension(user_entry, months)
+            user_entry["pending_payment"] = None
+            save_bot_data(all_users_data)
+            await update.message.reply_text(msg_payment_success, reply_markup=build_main_menu_markup(user_id_str))
+            return
+
+        if latest_status in {"pending", "waiting_for_capture"}:
+            logger.warning(
+                "[PAYMENT CANCEL] detach pending payment after cancel failure user_id=%s payment_id=%s cancel=%s",
+                user_id_str,
+                payment_id,
+                cancel_data,
+            )
+            user_entry["pending_payment"] = None
+            save_bot_data(all_users_data)
+            await update.message.reply_text(
+                "Не удалось отменить платёж в YooKassa, но я отвязал его в боте. Теперь можешь создать новый платёж на нужный срок.",
+                reply_markup=build_payment_options_markup(),
+            )
+            return
+
+        await update.message.reply_text(
+            "Не удалось отменить платёж прямо сейчас. Попробуй снова через минуту.",
+            reply_markup=build_pending_payment_markup(),
+        )
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
