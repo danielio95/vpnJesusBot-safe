@@ -119,6 +119,14 @@ PAYMENT_BUTTONS = {
     btn_pay_3_month: {"months": 3, "amount": 3},
 }
 
+#instruction_platforms = {
+#    "ios": "ios",
+#    "android": "android",
+#    "windows": "windows",
+#    "macos": "macos",
+#    "linux": "linux",
+#}
+
 instruction_platforms = {
     "ios": "ios",
     "android": "android",
