@@ -129,7 +129,7 @@ instruction_platforms = {
 
 
 def build_instruction_next_markup(platform_key: str, step_index: int):
-    if platform_key == "android" and step_index == 0:
+    if platform_key in {"android", "ios"} and step_index == 0:
         keyboard = [[btn_next, btn_3], [btn_cancel]]
     else:
         keyboard = [[btn_next], [btn_cancel]]
