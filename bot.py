@@ -173,7 +173,7 @@ def build_pending_payment_markup():
 
 def run_xray_service_command(action: str):
     return run(
-        ["sudo", "systemctl", action, "xray"],
+        ["sudo", "/usr/bin/systemctl", action, "xray.service"],
         stdout=PIPE,
         stderr=STDOUT,
         text=True,
