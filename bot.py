@@ -488,7 +488,11 @@ def cancel_yookassa_payment(payment_id):
         response = post(
             f"{YOOKASSA_API_BASE}/payments/{payment_id}/cancel",
             auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
-            headers={"Idempotence-Key": idempotence_key},
+            headers={
+                "Idempotence-Key": idempotence_key,
+                "Content-Type": "application/json",
+            },
+            json={},
             timeout=30,
         )
     except Exception:
@@ -1554,6 +1558,21 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             user_entry["pending_payment"] = None
             save_bot_data(all_users_data)
             await update.message.reply_text(msg_payment_success, reply_markup=build_main_menu_markup(user_id_str))
+            return
+
+        if latest_status in {"pending", "waiting_for_capture"}:
+            logger.warning(
+                "[PAYMENT CANCEL] detach pending payment after cancel failure user_id=%s payment_id=%s cancel=%s",
+                user_id_str,
+                payment_id,
+                cancel_data,
+            )
+            user_entry["pending_payment"] = None
+            save_bot_data(all_users_data)
+            await update.message.reply_text(
+                "Не удалось отменить платёж в YooKassa, но я отвязал его в боте. Теперь можешь создать новый платёж на нужный срок.",
+                reply_markup=build_payment_options_markup(),
+            )
             return
 
         await update.message.reply_text(
