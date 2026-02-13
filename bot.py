@@ -83,6 +83,12 @@ msg_welcome = (
     "без ограничений. Нажми на кнопку «Инструкция», чтобы получить пошаговое подключение, "
     "а затем выбери нужное действие в меню ниже."
 )
+msg_welcome_back = (
+    "С возвращением! 👋\n\n"
+    "Твой профиль: <name and surname>.\n"
+    "Бесплатный 3-дневный доступ можно получить только один раз.\n\n"
+    "Выбери нужное действие в меню ниже."
+)
 
 admin_sent = "Ответ отправлен пользователю "
 admin_id_error = "В сообщении не удалось найти ID пользователя или ID сообщения."
@@ -225,12 +231,17 @@ def _normalize_user_entry(user_id_str, entry):
     pending_payment = base.get("pending_payment")
     if not isinstance(pending_payment, dict):
         pending_payment = None
+    trial_data = base.get("trial") if isinstance(base.get("trial"), dict) else {}
     return {
         "name": base.get("name", ""),
         "date": base.get("date", 1),
         "payments": _prune_payments(base.get("payments", {})),
         "xray": _normalize_xray_data(base.get("xray", {}), default_email=user_id_str),
         "pending_payment": pending_payment,
+        "trial": {
+            "is_used": bool(trial_data.get("is_used", False)),
+            "granted_at": trial_data.get("granted_at"),
+        },
     }
 
 def _normalize_users_data(data):
@@ -302,6 +313,10 @@ def initialize_user_entry(all_users_data, user_id_str, user_name):
             "shortid": "",
         },
         "pending_payment": None,
+        "trial": {
+            "is_used": True,
+            "granted_at": now.isoformat(),
+        },
     }
 
     logger.debug("[XRAY SYNC] creating new user entry user_id=%s email=%s", user_id_str, user_id_str)
@@ -1659,7 +1674,8 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     all_users_data = context.bot_data.get('user_info', {})
     user_name = update.effective_user.first_name
-    if user_id_str in all_users_data:
+    is_new_user = user_id_str not in all_users_data
+    if not is_new_user:
         get_user_entry(all_users_data, user_id_str, user_name)
     else:
         initialize_user_entry(all_users_data, user_id_str, user_name)
@@ -1670,7 +1686,8 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ).strip()
     profile_name = full_name or (update.effective_user.username or "гость")
 
-    await update.message.reply_text(msg_welcome.replace("<name and surname>", profile_name))
+    welcome_message = msg_welcome if is_new_user else msg_welcome_back
+    await update.message.reply_text(welcome_message.replace("<name and surname>", profile_name))
     await update.message.reply_text(msg_menu, reply_markup=reply_markup)
 
 
