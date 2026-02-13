@@ -1520,6 +1520,27 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("У тебя нет незавершённого платежа.", reply_markup=build_payment_options_markup())
             return
 
+        pending_payments_snapshot = []
+        for pending_user_id, pending_user_entry in all_users_data.items():
+            pending_data = pending_user_entry.get("pending_payment") if isinstance(pending_user_entry, dict) else None
+            if isinstance(pending_data, dict) and pending_data.get("payment_id"):
+                pending_payments_snapshot.append(
+                    {
+                        "user_id": pending_user_id,
+                        "payment_id": pending_data.get("payment_id"),
+                        "status": pending_data.get("last_status"),
+                        "months": pending_data.get("months"),
+                        "amount": pending_data.get("amount"),
+                        "created_at": pending_data.get("created_at"),
+                    }
+                )
+        logger.debug(
+            "[PAYMENT CANCEL] pending payments snapshot before cancel requester=%s count=%s data=%s",
+            user_id_str,
+            len(pending_payments_snapshot),
+            pending_payments_snapshot,
+        )
+
         payment_id = existing_pending.get("payment_id")
         cancel_data = await to_thread(cancel_yookassa_payment, payment_id)
         status = cancel_data.get("status") if isinstance(cancel_data, dict) else None
