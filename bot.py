@@ -303,6 +303,18 @@ def initialize_user_entry(all_users_data, user_id_str, user_name):
         },
         "pending_payment": None,
     }
+
+    logger.debug("[XRAY SYNC] creating new user entry user_id=%s email=%s", user_id_str, user_id_str)
+    user_id, sid = add_xray_user(user_id_str)
+    if user_id and sid:
+        entry["xray"]["id"] = user_id
+        entry["xray"]["shortid"] = sid
+        entry["xray"]["offloaded"] = False
+        entry["xray"]["offloaded_at"] = None
+        logger.info("[XRAY SYNC] created and loaded new user user_id=%s email=%s uuid=%s", user_id_str, user_id_str, user_id)
+    else:
+        logger.error("[XRAY SYNC] failed to create xray user for new user_id=%s email=%s", user_id_str, user_id_str)
+
     all_users_data[user_id_str] = entry
     return entry
 
@@ -667,17 +679,21 @@ def preload_active_users_into_xray(all_users_data):
         normalized_entry = _normalize_user_entry(user_id_str, user_entry)
         all_users_data[user_id_str] = normalized_entry
 
-        curr_status, _ = get_payment_status(normalized_entry)
-        if curr_status != msg_paid:
-            skipped_count += 1
-            continue
-
         xray_info = normalized_entry.get("xray", {})
         email = xray_info.get("email") or user_id_str
         user_id = xray_info.get("id")
         sid = xray_info.get("shortid")
 
-        if not email or not user_id or not sid:
+        logger.debug(
+            "[XRAY PRELOAD] processing user_id=%s email=%s has_uuid=%s has_sid=%s offloaded=%s",
+            user_id_str,
+            email,
+            bool(user_id),
+            bool(sid),
+            xray_info.get("offloaded"),
+        )
+
+        if not email or not user_id:
             logger.warning(
                 "[XRAY PRELOAD] skip user_id=%s reason=missing_xray_fields email=%s id=%s sid=%s",
                 user_id_str,
@@ -702,7 +718,7 @@ def preload_active_users_into_xray(all_users_data):
     if loaded_count:
         save_bot_data(all_users_data)
 
-    logger.info("[XRAY PRELOAD] completed loaded=%s skipped=%s", loaded_count, skipped_count)
+    logger.info("[XRAY PRELOAD] completed loaded=%s skipped=%s total=%s", loaded_count, skipped_count, len(all_users_data))
     return loaded_count, skipped_count
 
 
