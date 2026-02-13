@@ -131,8 +131,7 @@ instruction_platforms = {
     "ios": "ios",
     "android": "android",
     "windows": "windows",
-    "macos": "macos",
-    "linux": "linux",
+    "macos": "macos"
 }
 
 
