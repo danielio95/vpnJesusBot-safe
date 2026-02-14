@@ -434,7 +434,7 @@ def create_yookassa_payment(amount_rub, description, user_id, months_count):
     idempotence_key = str(uuid4())
     payload = {
         "amount": {"value": f"{float(amount_rub):.2f}", "currency": "RUB"},
-        "payment_method_data": {"type": "bank_card"},
+        "payment_method_data": {"type": "sbp"},
         "confirmation": {
             "type": "redirect",
             "return_url": YOOKASSA_RETURN_URL,
