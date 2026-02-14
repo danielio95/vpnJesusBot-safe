@@ -655,7 +655,9 @@ def _is_expired_for_offload(user_data, now=None):
     except (TypeError, ValueError):
         due_day = 1
 
-    if current_time.day <= due_day:
+    # Subscription should be considered expired starting on the due day itself.
+    # Example: due_day=14 -> unpaid user is expired on Feb 14 (not only after Feb 14).
+    if current_time.day < due_day:
         return False
 
     payments = user_data.get("payments", {})
@@ -714,6 +716,16 @@ def preload_active_users_into_xray(all_users_data):
             bool(sid),
             xray_info.get("offloaded"),
         )
+
+        if xray_info.get("offloaded"):
+            logger.debug("[XRAY PRELOAD] skip user_id=%s reason=already_offloaded", user_id_str)
+            skipped_count += 1
+            continue
+
+        if _is_expired_for_offload(normalized_entry):
+            logger.debug("[XRAY PRELOAD] skip user_id=%s reason=expired", user_id_str)
+            skipped_count += 1
+            continue
 
         if not email or not user_id:
             logger.warning(
