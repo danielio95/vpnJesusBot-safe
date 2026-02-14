@@ -105,18 +105,18 @@ btn_3 = "Получить конфиг"
 btn_instruction = "Инструкция"
 btn_next = "Дальше ➡️"
 btn_cancel = "Отменить ❌"
-btn_pay_1_month = "1 мес - 1 руб"
-btn_pay_2_month = "2 мес - 2 руб"
-btn_pay_3_month = "3 мес - 3 руб"
+btn_pay_1_month = "1 мес — 99 ₽"
+btn_pay_2_month = "2 мес — 189 ₽ (−5%)"
+btn_pay_3_month = "⭐ 3 мес — 279 ₽ (выгодно)"
 btn_cancel_pending_payment = "Отменить незавершённый платёж"
 btn_restart_xray = "restart xray"
 btn_stop_xray = "stop xray"
 btn_start_xray = "start xray"
 
 PAYMENT_BUTTONS = {
-    btn_pay_1_month: {"months": 1, "amount": 1},
-    btn_pay_2_month: {"months": 2, "amount": 2},
-    btn_pay_3_month: {"months": 3, "amount": 3},
+    btn_pay_1_month: {"months": 1, "amount": 99},
+    btn_pay_2_month: {"months": 2, "amount": 189},
+    btn_pay_3_month: {"months": 3, "amount": 279},
 }
 
 #instruction_platforms = {
