@@ -61,27 +61,29 @@ logger = getLogger(__name__)
 
 # --- MESSAGES ---
 
-msg_error = "Возникла проблема. Пожалуйста, сообщите администратору."
-msg_paid_full = "Оплачено до конца 2026 года."
-msg_paid = "Всё готово. Оплата не требуется."
-msg_unpaid = "Для дальнейшего использования VPN необходимо внести оплату."
-msg_payment_pending = "Платёж создан и ожидает подтверждения. Конфиг будет доступен после успешной оплаты."
-msg_payment_success = "Поздравляю с покупкой! Ты можешь посмотреть свою конфигурацию нажав на Получить конфиг"
+msg_error = "😔 Что-то пошло не так. Пожалуйста, сообщите администратору."
+msg_paid_full = "🎉 Подписка активна до конца 2026 года."
+msg_paid = "✅ Подписка активна. Доплата сейчас не нужна."
+msg_unpaid = "💳 Для доступа к VPN нужно продлить подписку."
+msg_payment_pending = "⏳ Платёж создан и ожидает подтверждения. Конфиг станет доступен сразу после успешной оплаты."
+msg_payment_success = "🎉 Оплата прошла успешно! Нажмите «⚙️ Получить конфиг», чтобы подключиться."
 msg_noID = "Мне не удалось найти ваш ID в базе данных."
-msg_question = "Пожалуйста, задайте свой вопрос, ответ появится здесь в течение 12 часов."
-msg_question_sent = "Вопрос отправлен! Ожидайте ответа."
-msg_menu = "Выберите действие:"
-msg_choose_device = "Выберите устройство:"
-msg_instruction_controls = "Нажмите «Дальше» или «Отменить»."
-msg_instruction_wait = "Подождите, отправляю следующий шаг…"
-msg_next_payment = "Следующий платеж в"
+msg_question = "✍️ Напишите ваш вопрос — обычно отвечаем в течение 12 часов."
+msg_question_sent = "✅ Вопрос отправлен! Скоро вернёмся с ответом."
+msg_menu = "✨ Выберите действие ниже:"
+msg_choose_device = "📱 Выберите ваше устройство:"
+msg_instruction_controls = "➡️ Нажмите «Дальше», чтобы продолжить, или «Отменить», чтобы выйти."
+msg_instruction_wait = "⏳ Подождите, отправляю следующий шаг…"
+msg_next_payment = "📅 Следующее продление:"
 msg_welcome = (
     "Привет! 👋\n\n"
     "Твой профиль: <name and surname>.\n"
     "Поздравляю с бесплатной подпиской на 3 дня! 🎉\n\n"
-    "Добро пожаловать в VPN Jesus — здесь мы поможем тебе безопасно и легко выйти в интернет "
-    "без ограничений. Нажми на кнопку «Инструкция», чтобы получить пошаговое подключение, "
-    "а затем выбери нужное действие в меню ниже."
+    "Добро пожаловать в VPN Jesus — здесь всё про быстрый и лёгкий доступ к интернету без ограничений. ⚡\n\n"
+    "📌 Что сделать сейчас:\n"
+    "1) Нажми «📘 Инструкция» и пройди подключение за 2–3 минуты.\n"
+    "2) Нажми «⚙️ Получить конфиг» и подключись в один тап.\n"
+    "3) При необходимости продли доступ через «💳 Продлить / проверить оплату»."
 )
 msg_welcome_back = (
     "С возвращением! 👋\n\n"
@@ -98,17 +100,17 @@ MSG = "telegram:@vpnjesusbot"
 
 # --- BUTTONS ---
 
-btn_1 = "Продлить/проверить мой платеж"
+btn_1 = "💳 Продлить / проверить оплату"
 btn_1_legacy = "Проверить мой платеж"
-btn_2 = "Задать вопрос"
-btn_3 = "Получить конфиг"
-btn_instruction = "Инструкция"
+btn_2 = "❓ Задать вопрос"
+btn_3 = "⚙️ Получить конфиг"
+btn_instruction = "📘 Инструкция"
 btn_next = "Дальше ➡️"
 btn_cancel = "Отменить ❌"
-btn_pay_1_month = "1 мес — 99 ₽"
-btn_pay_2_month = "2 мес — 189 ₽ (−5%)"
-btn_pay_3_month = "⭐ 3 мес — 279 ₽ (выгодно)"
-btn_cancel_pending_payment = "Отменить незавершённый платёж"
+btn_pay_1_month = "🚀 1 мес — 99 ₽"
+btn_pay_2_month = "⚡ 2 мес — 189 ₽ (−5%)"
+btn_pay_3_month = "⭐ 3 мес — 279 ₽ (лучший выбор)"
+btn_cancel_pending_payment = "🧾 Отменить незавершённый платёж"
 btn_restart_xray = "restart xray"
 btn_stop_xray = "stop xray"
 btn_start_xray = "start xray"
@@ -128,10 +130,10 @@ PAYMENT_BUTTONS = {
 #}
 
 instruction_platforms = {
-    "ios": "ios",
-    "android": "android",
-    "windows": "windows",
-    "macos": "macos"
+    "🍎 iPhone (iOS)": "ios",
+    "🤖 Android": "android",
+    "🪟 Windows": "windows",
+    "💻 macOS": "macos"
 }
 
 
@@ -588,7 +590,7 @@ async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id
         if status in {"canceled"}:
             user_entry["pending_payment"] = None
             save_bot_data(all_users_data)
-            await context.bot.send_message(chat_id=user_id_str, text="Оплата была отменена. Попробуй снова, нажав на Получить конфиг.", reply_markup=build_main_menu_markup(user_id_str))
+            await context.bot.send_message(chat_id=user_id_str, text="❌ Платёж был отменён. Нажми «⚙️ Получить конфиг», чтобы создать новый платёж.", reply_markup=build_main_menu_markup(user_id_str))
             logger.info("[PAYMENT MONITOR] payment canceled user_id=%s payment_id=%s", user_id_str, payment_id)
             return
 
@@ -1214,7 +1216,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 await update.message.reply_text(f"⚠️ {msg_unpaid}", reply_markup=reply_markup)
 
             await update.message.reply_text(
-                "Продлить подписку можно по кнопкам ниже:",
+                "💡 Выберите удобный тариф ниже — оплата через СБП обычно занимает меньше минуты:",
                 reply_markup=build_payment_options_markup(),
             )
         else:
@@ -1412,9 +1414,9 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                     await update.message.reply_text(msg_payment_success, reply_markup=reply_markup)
                 else:
                     link = pending_payment.get("confirmation_url")
-                    txt = f"{msg_payment_pending}\nСтатус: {status or 'unknown'}"
+                    txt = f"{msg_payment_pending}\n📌 Статус: {status or 'unknown'}"
                     if link:
-                        txt += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
+                        txt += f"\n🔗 Ссылка на оплату: {link}\n📱 QR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
                     await update.message.reply_text(txt, reply_markup=build_pending_payment_markup())
                 return
 
@@ -1495,9 +1497,9 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         if isinstance(existing_pending, dict) and existing_pending.get("payment_id"):
             logger.info("[PAYMENT FLOW] reusing existing pending payment user_id=%s payment_id=%s", user_id_str, existing_pending.get("payment_id"))
             link = existing_pending.get("confirmation_url")
-            text = f"У тебя уже есть незавершённый платёж.\nСтатус: {existing_pending.get('last_status', 'pending')}"
+            text = f"ℹ️ У вас уже есть незавершённый платёж.\n📌 Статус: {existing_pending.get('last_status', 'pending')}"
             if link:
-                text += f"\nСсылка на оплату: {link}\nQR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
+                text += f"\n🔗 Ссылка на оплату: {link}\n📱 QR: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(link)}"
             await update.message.reply_text(text, reply_markup=build_pending_payment_markup())
             return
 
@@ -1519,7 +1521,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if not isinstance(payment_data, dict) or payment_data.get("error"):
             await update.message.reply_text(
-                "Не удалось создать платёж. Проверь настройки YooKassa и попробуй снова.",
+                "😔 Не удалось создать платёж. Попробуйте ещё раз через минуту.",
                 reply_markup=build_payment_options_markup(),
             )
             return
@@ -1544,12 +1546,12 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={quote(confirmation_url)}"
         await update.message.reply_text(
             (
-                "Платёж создан ✅\n"
-                f"Сумма: {amount} RUB\n"
-                f"Месяцев: {months}\n"
-                f"Ссылка на оплату: {confirmation_url}\n"
-                f"QR: {qr_url}\n\n"
-                "Я автоматически проверяю оплату. Пока оплата не подтверждена, доступ к конфигу закрыт."
+                "✅ Платёж создан!\n"
+                f"💰 Сумма: {amount} ₽\n"
+                f"📦 Срок: {months} мес.\n"
+                f"🔗 Ссылка на оплату: {confirmation_url}\n"
+                f"📱 QR для быстрого перехода: {qr_url}\n\n"
+                "⚡ Я автоматически проверяю статус оплаты. Как только платёж подтвердится, конфиг сразу станет доступен."
             ),
             reply_markup=build_payment_options_markup(),
         )
@@ -1569,7 +1571,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
         existing_pending = user_entry.get("pending_payment")
         if not isinstance(existing_pending, dict) or not existing_pending.get("payment_id"):
-            await update.message.reply_text("У тебя нет незавершённого платежа.", reply_markup=build_payment_options_markup())
+            await update.message.reply_text("✅ Сейчас нет незавершённых платежей.", reply_markup=build_payment_options_markup())
             return
 
         pending_payments_snapshot = []
@@ -1609,7 +1611,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
             else:
                 await update.message.reply_text(
-                    "Незавершённый платёж отменён. Теперь можешь выбрать другой срок подписки.",
+                    "✅ Незавершённый платёж отменён. Теперь можно выбрать любой удобный тариф.",
                     reply_markup=build_payment_options_markup(),
                 )
             return
@@ -1620,7 +1622,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             user_entry["pending_payment"] = None
             save_bot_data(all_users_data)
             await update.message.reply_text(
-                "Незавершённый платёж уже отменён. Выбери новый срок подписки.",
+                "ℹ️ Этот платёж уже отменён. Выберите новый срок подписки.",
                 reply_markup=build_payment_options_markup(),
             )
             return
@@ -1649,7 +1651,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         await update.message.reply_text(
-            "Не удалось отменить платёж прямо сейчас. Попробуй снова через минуту.",
+            "😔 Не удалось отменить платёж прямо сейчас. Попробуйте ещё раз через минуту.",
             reply_markup=build_pending_payment_markup(),
         )
 
