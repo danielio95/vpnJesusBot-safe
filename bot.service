@@ -13,13 +13,17 @@ Restart=always
 RestartSec=5
 
 Environment="SINGBOX_PUBLIC_IP=45.151.183.231"
-Environment="SINGBOX_REALITY_PBK=J8-18qflZog-ffsXWh290d7OjFyDmRW81nymvEsm1F0"
-Environment="SINGBOX_REALITY_SNI=bostad.blocket.se"
+Environment="SINGBOX_TUIC_SNI=gappulpnp.online"
+Environment="SINGBOX_TUIC_ALPN=h3"
+Environment="SINGBOX_TUIC_CONGESTION_CONTROL=bbr"
+Environment="SINGBOX_TUIC_UDP_RELAY_MODE=quic"
+Environment="SINGBOX_TUIC_ALLOW_INSECURE=0"
 Environment="SINGBOX_BIN=/usr/bin/sing-box"
 Environment="SINGBOX_CONFIG_PATH=/etc/sing-box/config.json"
 Environment="SINGBOX_SERVICE=sing-box.service"
-Environment="SINGBOX_INBOUND_TAG=vless-in"
-Environment="SINGBOX_REALITY_SHORTID=abecf7e74a3f52fc"
+Environment="SINGBOX_INBOUND_TAG=tuic-in"
+Environment="SINGBOX_SYSTEMCTL_BIN=/usr/bin/systemctl"
+Environment="SINGBOX_SYSTEMCTL_USE_SUDO=0"
 
 # Send logs to standard output (viewable via journalctl)
 StandardOutput=append:/usr/local/telebot/log/output.log

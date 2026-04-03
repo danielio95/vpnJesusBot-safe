@@ -26,14 +26,24 @@ SINGBOX_BIN = getenv("SINGBOX_BIN", "/usr/bin/sing-box")
 SINGBOX_CONFIG_PATH = getenv("SINGBOX_CONFIG_PATH", "/etc/sing-box/config.json")
 SINGBOX_SERVICE = getenv("SINGBOX_SERVICE", "sing-box.service")
 SINGBOX_RELOAD_ACTION = getenv("SINGBOX_RELOAD_ACTION", "restart")
-INBOUND_TAG = getenv("SINGBOX_INBOUND_TAG", "vless-in")
+INBOUND_TAG = getenv("SINGBOX_INBOUND_TAG", "tuic-in")
 API_SERVER = getenv("SINGBOX_API_SERVER", "127.0.0.1")
 API_PORT = getenv("SINGBOX_API_PORT", "9090")
+SYSTEMCTL_BIN = getenv("SINGBOX_SYSTEMCTL_BIN", "/usr/bin/systemctl")
+SYSTEMCTL_USE_SUDO = getenv("SINGBOX_SYSTEMCTL_USE_SUDO", "0").strip() == "1"
 
 
 def run_singbox_command(args):
     logger.debug("Running sing-box command args=%s", args)
     return run([SINGBOX_BIN] + args, capture_output=True, text=True)
+
+
+def run_systemctl(action, service=SINGBOX_SERVICE):
+    cmd = [SYSTEMCTL_BIN, action, service]
+    if SYSTEMCTL_USE_SUDO:
+        cmd.insert(0, "sudo")
+    logger.debug("Running systemctl command: %s", cmd)
+    return run(cmd, capture_output=True, text=True)
 
 
 def run_singbox_api(args):
@@ -129,7 +139,7 @@ def update_singbox_users(mutator):
         return True, details
 
     _save_config(config_data)
-    service_result = run(["sudo", "/usr/bin/systemctl", SINGBOX_RELOAD_ACTION, SINGBOX_SERVICE], capture_output=True, text=True)
+    service_result = run_systemctl(SINGBOX_RELOAD_ACTION, SINGBOX_SERVICE)
     if service_result.returncode != 0:
         stderr = (service_result.stderr or service_result.stdout or "").strip()
         logger.error("Failed to %s %s: %s", SINGBOX_RELOAD_ACTION, SINGBOX_SERVICE, stderr)

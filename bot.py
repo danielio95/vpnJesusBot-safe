@@ -1,5 +1,4 @@
 from sys import stdout
-from uuid import uuid4
 from html import unescape
 from subprocess import run, PIPE, STDOUT
 from typing import Optional
@@ -15,7 +14,17 @@ from datetime import datetime, timedelta, time
 from logging.handlers import RotatingFileHandler
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from logging import INFO, WARNING, DEBUG, StreamHandler, basicConfig, getLogger
-from add_user import add_user as add_singbox_user, add_user_with_id as add_singbox_user_with_id, FLOW, IP, PBK, PORT, SNI
+from add_user import (
+    add_user as add_singbox_user,
+    add_user_with_id as add_singbox_user_with_id,
+    IP,
+    PORT,
+    SNI,
+    ALPN,
+    CONGESTION_CONTROL,
+    UDP_RELAY_MODE,
+    ALLOW_INSECURE,
+)
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # --- CONFIGURATION ---
@@ -29,6 +38,8 @@ YOOKASSA_RETURN_URL = getenv("YOOKASSA_RETURN_URL", "https://google.com").strip(
 YOOKASSA_API_BASE = "https://api.yookassa.ru/v3"
 PAYMENT_POLL_INTERVAL_SECONDS = 10
 PAYMENT_POLL_ATTEMPTS = 60
+SYSTEMCTL_BIN = getenv("SINGBOX_SYSTEMCTL_BIN", "/usr/bin/systemctl")
+SYSTEMCTL_USE_SUDO = getenv("SINGBOX_SYSTEMCTL_USE_SUDO", "0").strip() == "1"
 
 def configure_logging(stdout_log_mode: str = "enable"):
     if stdout_log_mode == "debug":
@@ -194,8 +205,11 @@ def build_pending_payment_markup():
 
 
 def run_singbox_service_command(action: str):
+    cmd = [SYSTEMCTL_BIN, action, "sing-box.service"]
+    if SYSTEMCTL_USE_SUDO:
+        cmd.insert(0, "sudo")
     return run(
-        ["sudo", "/usr/bin/systemctl", action, "sing-box.service"],
+        cmd,
         stdout=PIPE,
         stderr=STDOUT,
         text=True,
@@ -237,7 +251,7 @@ def _normalize_singbox_data(singbox_data, default_email=""):
     return {
         "email": data.get("email", default_email) or default_email,
         "id": data.get("id", ""),
-        "shortid": data.get("shortid", ""),
+        "password": data.get("password", ""),
         "offloaded": bool(data.get("offloaded", False)),
         "offloaded_at": data.get("offloaded_at"),
     }
@@ -326,7 +340,7 @@ def initialize_user_entry(all_users_data, user_id_str, user_name):
         "singbox": {
             "email": user_id_str,
             "id": "",
-            "shortid": "",
+            "password": "",
         },
         "pending_payment": None,
         "trial": {
@@ -336,10 +350,10 @@ def initialize_user_entry(all_users_data, user_id_str, user_name):
     }
 
     logger.debug("[SINGBOX SYNC] creating new user entry user_id=%s email=%s", user_id_str, user_id_str)
-    user_id, sid = add_singbox_user(user_id_str)
-    if user_id and sid:
+    user_id, user_password = add_singbox_user(user_id_str)
+    if user_id and user_password:
         entry["singbox"]["id"] = user_id
-        entry["singbox"]["shortid"] = sid
+        entry["singbox"]["password"] = user_password
         entry["singbox"]["offloaded"] = False
         entry["singbox"]["offloaded_at"] = None
         logger.info("[SINGBOX SYNC] created and loaded new user user_id=%s email=%s uuid=%s", user_id_str, user_id_str, user_id)
@@ -606,11 +620,12 @@ async def monitor_payment_and_unlock(context: ContextTypes.DEFAULT_TYPE, user_id
     logger.warning("[PAYMENT MONITOR] timeout user_id=%s payment_id=%s", user_id_str, payment_id)
     await context.bot.send_message(chat_id=user_id_str, text="Платёж всё ещё обрабатывается. Когда он подтвердится, я автоматически открою доступ к конфигу.")
 
-def build_vless_config(user_id, sid):
+def build_tuic_config(user_id, password):
     return (
-        f"vless://{user_id}@{IP}:{PORT}"
-        f"?security=reality&encryption=none&pbk={PBK}&headerType=none"
-        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#{MSG}"
+        f"tuic://{user_id}:{password}@{IP}:{PORT}"
+        f"?alpn={ALPN}&congestion_control={CONGESTION_CONTROL}"
+        f"&udp_relay_mode={UDP_RELAY_MODE}&sni={SNI}&allow_insecure={ALLOW_INSECURE}"
+        f"#{MSG}"
     )
 
 def ensure_year(payments, year):
@@ -715,14 +730,14 @@ def preload_active_users_into_singbox(all_users_data):
         singbox_info = normalized_entry.get("singbox", {})
         email = singbox_info.get("email") or user_id_str
         user_id = singbox_info.get("id")
-        sid = singbox_info.get("shortid")
+        user_password = singbox_info.get("password")
 
         logger.debug(
-            "[SINGBOX PRELOAD] processing user_id=%s email=%s has_uuid=%s has_sid=%s offloaded=%s",
+            "[SINGBOX PRELOAD] processing user_id=%s email=%s has_uuid=%s has_password=%s offloaded=%s",
             user_id_str,
             email,
             bool(user_id),
-            bool(sid),
+            bool(user_password),
             singbox_info.get("offloaded"),
         )
 
@@ -736,18 +751,18 @@ def preload_active_users_into_singbox(all_users_data):
             skipped_count += 1
             continue
 
-        if not email or not user_id:
+        if not email or not user_id or not user_password:
             logger.warning(
-                "[SINGBOX PRELOAD] skip user_id=%s reason=missing_singbox_fields email=%s id=%s sid=%s",
+                "[SINGBOX PRELOAD] skip user_id=%s reason=missing_singbox_fields email=%s id=%s password=%s",
                 user_id_str,
                 email,
                 bool(user_id),
-                bool(sid),
+                bool(user_password),
             )
             skipped_count += 1
             continue
 
-        success = add_singbox_user_with_id(email, user_id)
+        success = add_singbox_user_with_id(email, user_id, user_password)
         if not success:
             logger.error("[SINGBOX PRELOAD] failed user_id=%s email=%s", user_id_str, email)
             skipped_count += 1
@@ -786,7 +801,7 @@ def run_expired_subscriptions_offload(all_users_data, reason="scheduled"):
 
         if _offload_user(email):
             singbox_info["id"] = ""
-            singbox_info["shortid"] = ""
+            singbox_info["password"] = ""
             singbox_info["offloaded"] = True
             singbox_info["offloaded_at"] = datetime.now().isoformat()
             offloaded_count += 1
@@ -1546,23 +1561,23 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             singbox_info["email"] = user_id_str
 
         user_id = singbox_info.get("id")
-        sid = singbox_info.get("shortid")
-        if not user_id or not sid:
+        user_password = singbox_info.get("password")
+        if not user_id or not user_password:
             logger.info("[FLOW BRANCH] creating singbox creds user_id=%s email=%s", user_id_str, singbox_info.get("email"))
-            user_id, sid = add_singbox_user(singbox_info["email"])
-            if not user_id or not sid:
+            user_id, user_password = add_singbox_user(singbox_info["email"])
+            if not user_id or not user_password:
                 logger.error("[FLOW BRANCH] failed to create singbox creds user_id=%s", user_id_str)
                 await update.message.reply_text(msg_error, reply_markup=step_markup)
                 return
             singbox_info["id"] = user_id
-            singbox_info["shortid"] = sid
+            singbox_info["password"] = user_password
             singbox_info["offloaded"] = False
             singbox_info["offloaded_at"] = None
 
         save_bot_data(all_users_data)
 
-        config_string = build_vless_config(user_id, sid)
-        logger.info("[FLOW BRANCH] config sent user_id=%s uuid=%s sid=%s", user_id_str, user_id, sid)
+        config_string = build_tuic_config(user_id, user_password)
+        logger.info("[FLOW BRANCH] config sent user_id=%s uuid=%s", user_id_str, user_id)
         await update.message.reply_text(config_string, reply_markup=step_markup)
 
     elif user_text in {btn_restart_singbox, btn_stop_singbox, btn_start_singbox}:
