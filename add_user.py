@@ -1,10 +1,8 @@
-from json import dump
 from uuid import uuid4
 from sys import argv, exit
-from os import getenv, urandom, remove
-from tempfile import NamedTemporaryFile
+from os import getenv, urandom
 from logging import basicConfig, DEBUG, getLogger
-from module import API_PORT, API_SERVER, run_xray_api
+from module import update_singbox_users
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -12,74 +10,47 @@ basicConfig(
 )
 logger = getLogger(__name__)
 
-INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "vless-in")
-LEVEL = int(getenv("XRAY_USER_LEVEL", "1"))
-FLOW = getenv("XRAY_FLOW", "xtls-rprx-vision")
-IP = getenv("XRAY_PUBLIC_IP", "0.0.0.0")
-PORT = getenv("XRAY_PUBLIC_PORT", "443")
-PBK = getenv("XRAY_REALITY_PBK", "")
-SNI = getenv("XRAY_REALITY_SNI", "")
-SHORTID = getenv("XRAY_REALITY_SHORTID", "")
-INBOUND_LISTEN = getenv("XRAY_INBOUND_LISTEN", "0.0.0.0")
-INBOUND_PORT = int(getenv("XRAY_INBOUND_PORT", "443"))
-INBOUND_PROTOCOL = getenv("XRAY_INBOUND_PROTOCOL", "vless")
+LEVEL = int(getenv("SINGBOX_USER_LEVEL", "1"))
+FLOW = getenv("SINGBOX_FLOW", "xtls-rprx-vision")
+IP = getenv("SINGBOX_PUBLIC_IP", "0.0.0.0")
+PORT = getenv("SINGBOX_PUBLIC_PORT", "443")
+PBK = getenv("SINGBOX_REALITY_PBK", "")
+SNI = getenv("SINGBOX_REALITY_SNI", "")
+SHORTID = getenv("SINGBOX_REALITY_SHORTID", "")
 
-def build_add_user_payload(email, user_id):
-    return {
-        "inbounds": [
-            {
-                "tag": INBOUND_TAG,
-                "listen": INBOUND_LISTEN,
-                "port": INBOUND_PORT,
-                "protocol": INBOUND_PROTOCOL,
-                "settings": {
-                    "clients": [
-                        {
-                            "id": user_id,
-                            "level": LEVEL,
-                            "email": email,
-                            "flow": FLOW,
-                        }
-                    ],
-                    "decryption": "none",
-                    "fallbacks": [],
-                },
-            }
-        ]
+
+def _build_user_entry(email, user_id):
+    entry = {
+        "name": email,
+        "uuid": user_id,
+        "flow": FLOW,
     }
+    if LEVEL >= 0:
+        entry["level"] = LEVEL
+    return entry
+
 
 def add_user(email):
     user_id = str(uuid4())
     sid = SHORTID or str(urandom(8).hex())
-    logger.debug("Adding user email=%s user_id=%s", email, user_id)
-    payload = build_add_user_payload(email, user_id)
-    temp_file = None
-    temp_path = None
-    try:
-        temp_file = NamedTemporaryFile("w", suffix=".json", delete=False)
-        dump(payload, temp_file)
-        temp_file.flush()
-        temp_path = temp_file.name
-    finally:
-        if temp_file is not None:
-            temp_file.close()
+    logger.debug("Adding sing-box user email=%s user_id=%s", email, user_id)
 
-    try:
-        result = run_xray_api([
-            "adu",
-            f"--server={API_SERVER}:{API_PORT}",
-            temp_path,
-        ])
-    finally:
-        if temp_path:
-            try:
-                remove(temp_path)
-            except FileNotFoundError:
-                logger.warning("Temporary payload file already removed: %s", temp_path)
+    def mutator(users):
+        filtered = []
+        for user in users:
+            if not isinstance(user, dict):
+                continue
+            if user.get("name") == email or user.get("email") == email:
+                continue
+            filtered.append(user)
+        filtered.append(_build_user_entry(email, user_id))
+        users[:] = filtered
+        return True, "created"
 
-    if result.returncode != 0:
-        logger.error("Failed to add user: %s", result.stderr.strip() or "unknown error")
-        print(result.stderr.strip() or "error: could not add user")
+    success, details = update_singbox_users(mutator)
+    if not success:
+        logger.error("Failed to add user: %s", details)
+        print(details or "error: could not add user")
         return None, None
 
     print(f"added user {email}")
@@ -88,46 +59,39 @@ def add_user(email):
 
 
 def add_user_with_id(email, user_id):
-    logger.debug("Adding existing user email=%s user_id=%s", email, user_id)
-    payload = build_add_user_payload(email, user_id)
-    temp_file = None
-    temp_path = None
-    try:
-        temp_file = NamedTemporaryFile("w", suffix=".json", delete=False)
-        dump(payload, temp_file)
-        temp_file.flush()
-        temp_path = temp_file.name
-    finally:
-        if temp_file is not None:
-            temp_file.close()
+    logger.debug("Adding existing sing-box user email=%s user_id=%s", email, user_id)
 
-    try:
-        result = run_xray_api([
-            "adu",
-            f"--server={API_SERVER}:{API_PORT}",
-            temp_path,
-        ])
-    finally:
-        if temp_path:
-            try:
-                remove(temp_path)
-            except FileNotFoundError:
-                logger.warning("Temporary payload file already removed: %s", temp_path)
+    def mutator(users):
+        filtered = []
+        for user in users:
+            if not isinstance(user, dict):
+                continue
+            if user.get("name") == email or user.get("email") == email:
+                continue
+            if user.get("uuid") == user_id:
+                continue
+            filtered.append(user)
+        filtered.append(_build_user_entry(email, user_id))
+        users[:] = filtered
+        return True, "loaded"
 
-    if result.returncode != 0:
-        logger.error("Failed to add existing user: %s", result.stderr.strip() or "unknown error")
+    success, details = update_singbox_users(mutator)
+    if not success:
+        logger.error("Failed to add existing user: %s", details)
         return False
 
     logger.debug("Existing user loaded successfully email=%s user_id=%s", email, user_id)
     return True
+
 
 def output_vless_string(user_id, sid):
     logger.debug("Outputting VLESS string for user_id=%s sid=%s", user_id, sid)
     print(
         f"vless://{user_id}@{IP}:{PORT}"
         f"?security=reality&encryption=none&pbk={PBK}&headerType=none"
-        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#xray"
+        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#sing-box"
     )
+
 
 if __name__ == "__main__":
     if len(argv) < 2:

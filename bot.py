@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, time
 from logging.handlers import RotatingFileHandler
 from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from logging import INFO, WARNING, DEBUG, StreamHandler, basicConfig, getLogger
-from add_user import add_user as add_xray_user, add_user_with_id as add_xray_user_with_id, FLOW, IP, PBK, PORT, SNI
+from add_user import add_user as add_singbox_user, add_user_with_id as add_singbox_user_with_id, FLOW, IP, PBK, PORT, SNI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # --- CONFIGURATION ---
@@ -111,9 +111,9 @@ btn_pay_1_month = "🚀 1 мес — 99 ₽"
 btn_pay_2_month = "⚡ 2 мес — 189 ₽ (−5%)"
 btn_pay_3_month = "⭐ 3 мес — 279 ₽ (лучший выбор)"
 btn_cancel_pending_payment = "🧾 Отменить незавершённый платёж"
-btn_restart_xray = "restart xray"
-btn_stop_xray = "stop xray"
-btn_start_xray = "start xray"
+btn_restart_singbox = "restart sing-box"
+btn_stop_singbox = "stop sing-box"
+btn_start_singbox = "start sing-box"
 btn_post = "post"
 
 PAYMENT_BUTTONS = {
@@ -173,7 +173,7 @@ def is_admin_user(user_id_str: str) -> bool:
 def build_main_menu_markup(user_id_str: Optional[str] = None):
     keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
     if user_id_str and is_admin_user(user_id_str):
-        keyboard.extend([[btn_restart_xray], [btn_stop_xray], [btn_start_xray], [btn_post]])
+        keyboard.extend([[btn_restart_singbox], [btn_stop_singbox], [btn_start_singbox], [btn_post]])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -187,9 +187,9 @@ def build_pending_payment_markup():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def run_xray_service_command(action: str):
+def run_singbox_service_command(action: str):
     return run(
-        ["sudo", "/usr/bin/systemctl", action, "xray.service"],
+        ["sudo", "/usr/bin/systemctl", action, "sing-box.service"],
         stdout=PIPE,
         stderr=STDOUT,
         text=True,
@@ -226,8 +226,8 @@ def _prune_payments(payments):
         }
     return cleaned
 
-def _normalize_xray_data(xray_data, default_email=""):
-    data = xray_data if isinstance(xray_data, dict) else {}
+def _normalize_singbox_data(singbox_data, default_email=""):
+    data = singbox_data if isinstance(singbox_data, dict) else {}
     return {
         "email": data.get("email", default_email) or default_email,
         "id": data.get("id", ""),
@@ -246,7 +246,7 @@ def _normalize_user_entry(user_id_str, entry):
         "name": base.get("name", ""),
         "date": base.get("date", 1),
         "payments": _prune_payments(base.get("payments", {})),
-        "xray": _normalize_xray_data(base.get("xray", {}), default_email=user_id_str),
+        "singbox": _normalize_singbox_data(base.get("singbox", base.get("xray", {})), default_email=user_id_str),
         "pending_payment": pending_payment,
         "trial": {
             "is_used": bool(trial_data.get("is_used", False)),
@@ -317,7 +317,7 @@ def initialize_user_entry(all_users_data, user_id_str, user_name):
         "name": user_name or "",
         "date": due_date.day,
         "payments": _build_initial_payments(now.month),
-        "xray": {
+        "singbox": {
             "email": user_id_str,
             "id": "",
             "shortid": "",
@@ -329,16 +329,16 @@ def initialize_user_entry(all_users_data, user_id_str, user_name):
         },
     }
 
-    logger.debug("[XRAY SYNC] creating new user entry user_id=%s email=%s", user_id_str, user_id_str)
-    user_id, sid = add_xray_user(user_id_str)
+    logger.debug("[SINGBOX SYNC] creating new user entry user_id=%s email=%s", user_id_str, user_id_str)
+    user_id, sid = add_singbox_user(user_id_str)
     if user_id and sid:
-        entry["xray"]["id"] = user_id
-        entry["xray"]["shortid"] = sid
-        entry["xray"]["offloaded"] = False
-        entry["xray"]["offloaded_at"] = None
-        logger.info("[XRAY SYNC] created and loaded new user user_id=%s email=%s uuid=%s", user_id_str, user_id_str, user_id)
+        entry["singbox"]["id"] = user_id
+        entry["singbox"]["shortid"] = sid
+        entry["singbox"]["offloaded"] = False
+        entry["singbox"]["offloaded_at"] = None
+        logger.info("[SINGBOX SYNC] created and loaded new user user_id=%s email=%s uuid=%s", user_id_str, user_id_str, user_id)
     else:
-        logger.error("[XRAY SYNC] failed to create xray user for new user_id=%s email=%s", user_id_str, user_id_str)
+        logger.error("[SINGBOX SYNC] failed to create sing-box user for new user_id=%s email=%s", user_id_str, user_id_str)
 
     all_users_data[user_id_str] = entry
     return entry
@@ -698,7 +698,7 @@ def _offload_user(email):
     return True
 
 
-def preload_active_users_into_xray(all_users_data):
+def preload_active_users_into_singbox(all_users_data):
     loaded_count = 0
     skipped_count = 0
 
@@ -706,33 +706,33 @@ def preload_active_users_into_xray(all_users_data):
         normalized_entry = _normalize_user_entry(user_id_str, user_entry)
         all_users_data[user_id_str] = normalized_entry
 
-        xray_info = normalized_entry.get("xray", {})
-        email = xray_info.get("email") or user_id_str
-        user_id = xray_info.get("id")
-        sid = xray_info.get("shortid")
+        singbox_info = normalized_entry.get("singbox", {})
+        email = singbox_info.get("email") or user_id_str
+        user_id = singbox_info.get("id")
+        sid = singbox_info.get("shortid")
 
         logger.debug(
-            "[XRAY PRELOAD] processing user_id=%s email=%s has_uuid=%s has_sid=%s offloaded=%s",
+            "[SINGBOX PRELOAD] processing user_id=%s email=%s has_uuid=%s has_sid=%s offloaded=%s",
             user_id_str,
             email,
             bool(user_id),
             bool(sid),
-            xray_info.get("offloaded"),
+            singbox_info.get("offloaded"),
         )
 
-        if xray_info.get("offloaded"):
-            logger.debug("[XRAY PRELOAD] skip user_id=%s reason=already_offloaded", user_id_str)
+        if singbox_info.get("offloaded"):
+            logger.debug("[SINGBOX PRELOAD] skip user_id=%s reason=already_offloaded", user_id_str)
             skipped_count += 1
             continue
 
         if _is_expired_for_offload(normalized_entry):
-            logger.debug("[XRAY PRELOAD] skip user_id=%s reason=expired", user_id_str)
+            logger.debug("[SINGBOX PRELOAD] skip user_id=%s reason=expired", user_id_str)
             skipped_count += 1
             continue
 
         if not email or not user_id:
             logger.warning(
-                "[XRAY PRELOAD] skip user_id=%s reason=missing_xray_fields email=%s id=%s sid=%s",
+                "[SINGBOX PRELOAD] skip user_id=%s reason=missing_singbox_fields email=%s id=%s sid=%s",
                 user_id_str,
                 email,
                 bool(user_id),
@@ -741,21 +741,21 @@ def preload_active_users_into_xray(all_users_data):
             skipped_count += 1
             continue
 
-        success = add_xray_user_with_id(email, user_id)
+        success = add_singbox_user_with_id(email, user_id)
         if not success:
-            logger.error("[XRAY PRELOAD] failed user_id=%s email=%s", user_id_str, email)
+            logger.error("[SINGBOX PRELOAD] failed user_id=%s email=%s", user_id_str, email)
             skipped_count += 1
             continue
 
-        xray_info["offloaded"] = False
-        xray_info["offloaded_at"] = None
+        singbox_info["offloaded"] = False
+        singbox_info["offloaded_at"] = None
         loaded_count += 1
-        logger.info("[XRAY PRELOAD] loaded user_id=%s email=%s", user_id_str, email)
+        logger.info("[SINGBOX PRELOAD] loaded user_id=%s email=%s", user_id_str, email)
 
     if loaded_count:
         save_bot_data(all_users_data)
 
-    logger.info("[XRAY PRELOAD] completed loaded=%s skipped=%s total=%s", loaded_count, skipped_count, len(all_users_data))
+    logger.info("[SINGBOX PRELOAD] completed loaded=%s skipped=%s total=%s", loaded_count, skipped_count, len(all_users_data))
     return loaded_count, skipped_count
 
 
@@ -768,21 +768,21 @@ def run_expired_subscriptions_offload(all_users_data, reason="scheduled"):
         if not _is_expired_for_offload(normalized_entry):
             continue
 
-        xray_info = normalized_entry.get("xray", {})
-        if xray_info.get("offloaded"):
+        singbox_info = normalized_entry.get("singbox", {})
+        if singbox_info.get("offloaded"):
             logger.debug("[OFFLOAD] skip already offloaded user_id=%s reason=%s", user_id_str, reason)
             continue
 
-        email = xray_info.get("email") or user_id_str
+        email = singbox_info.get("email") or user_id_str
         if not email:
             logger.warning("[OFFLOAD] skip missing email user_id=%s reason=%s", user_id_str, reason)
             continue
 
         if _offload_user(email):
-            xray_info["id"] = ""
-            xray_info["shortid"] = ""
-            xray_info["offloaded"] = True
-            xray_info["offloaded_at"] = datetime.now().isoformat()
+            singbox_info["id"] = ""
+            singbox_info["shortid"] = ""
+            singbox_info["offloaded"] = True
+            singbox_info["offloaded_at"] = datetime.now().isoformat()
             offloaded_count += 1
             logger.info("[OFFLOAD] user_id=%s marked as offloaded reason=%s", user_id_str, reason)
 
@@ -1460,28 +1460,28 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(f"⚠️ {msg_unpaid}", reply_markup=payment_markup)
             return
 
-        xray_info = user_entry["xray"]
-        if not xray_info.get("email"):
-            xray_info["email"] = user_id_str
+        singbox_info = user_entry["singbox"]
+        if not singbox_info.get("email"):
+            singbox_info["email"] = user_id_str
 
-        user_id = xray_info.get("id")
-        sid = xray_info.get("shortid")
+        user_id = singbox_info.get("id")
+        sid = singbox_info.get("shortid")
         if not user_id or not sid:
-            user_id, sid = add_xray_user(xray_info["email"])
+            user_id, sid = add_singbox_user(singbox_info["email"])
             if not user_id or not sid:
                 await update.message.reply_text(msg_error, reply_markup=step_markup)
                 return
-            xray_info["id"] = user_id
-            xray_info["shortid"] = sid
-            xray_info["offloaded"] = False
-            xray_info["offloaded_at"] = None
+            singbox_info["id"] = user_id
+            singbox_info["shortid"] = sid
+            singbox_info["offloaded"] = False
+            singbox_info["offloaded_at"] = None
 
         save_bot_data(all_users_data)
 
         config_string = build_vless_config(user_id, sid)
         await update.message.reply_text(config_string, reply_markup=step_markup)
 
-    elif user_text in {btn_restart_xray, btn_stop_xray, btn_start_xray}:
+    elif user_text in {btn_restart_singbox, btn_stop_singbox, btn_start_singbox}:
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
@@ -1492,17 +1492,17 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         action_map = {
-            btn_restart_xray: "restart",
-            btn_stop_xray: "stop",
-            btn_start_xray: "start",
+            btn_restart_singbox: "restart",
+            btn_stop_singbox: "stop",
+            btn_start_singbox: "start",
         }
         action = action_map[user_text]
-        result = await to_thread(run_xray_service_command, action)
+        result = await to_thread(run_singbox_service_command, action)
         output = (result.stdout or "").strip()
         if result.returncode == 0:
-            response = f"✅ xray {action} executed successfully."
+            response = f"✅ sing-box {action} executed successfully."
         else:
-            response = f"❌ Failed to {action} xray (code: {result.returncode})."
+            response = f"❌ Failed to {action} sing-box (code: {result.returncode})."
         if output:
             response += f"\n{output}"
 
@@ -1848,7 +1848,7 @@ if __name__ == '__main__':
     
     user_data = load_user_data()
     application.bot_data['user_info'] = user_data
-    preload_active_users_into_xray(application.bot_data['user_info'])
+    preload_active_users_into_singbox(application.bot_data['user_info'])
     run_expired_subscriptions_offload(application.bot_data['user_info'], reason="startup")
 
     now = datetime.now()
