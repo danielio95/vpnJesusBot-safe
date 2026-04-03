@@ -59,6 +59,12 @@ def configure_logging(stdout_log_mode: str = "enable"):
 configure_logging()
 logger = getLogger(__name__)
 
+def _safe_preview(value, max_len=180):
+    text = str(value)
+    if len(text) <= max_len:
+        return text
+    return f"{text[:max_len]}…(truncated {len(text) - max_len} chars)"
+
 # --- MESSAGES ---
 
 msg_error = "😔 Что-то пошло не так. Пожалуйста, сообщите администратору."
@@ -904,7 +910,9 @@ def get_payment_status(user_data):
 def _get_instruction_steps(platform_name):
     base_path = path.dirname(__file__)
     platform_path = path.join(base_path, "instructions", platform_name)
+    logger.debug("[INSTRUCTION STEPS] resolve platform=%s path=%s", platform_name, platform_path)
     if not path.isdir(platform_path):
+        logger.warning("[INSTRUCTION STEPS] missing directory platform=%s path=%s", platform_name, platform_path)
         return []
     steps = []
     for entry in listdir(platform_path):
@@ -918,7 +926,9 @@ def _get_instruction_steps(platform_name):
             continue
         steps.append((int(step_number_str), entry))
     steps.sort(key=lambda item: item[0])
-    return [entry for _, entry in steps]
+    sorted_steps = [entry for _, entry in steps]
+    logger.debug("[INSTRUCTION STEPS] platform=%s steps=%s", platform_name, sorted_steps)
+    return sorted_steps
 
 
 def _get_step_files(step_path):
@@ -986,6 +996,7 @@ async def _reply_photo_with_html_caption_fallback(message, image_handle, caption
 
 
 def _collect_step_content(step_path):
+    logger.debug("[INSTRUCTION CONTENT] collecting from step_path=%s", step_path)
     files = _get_step_files(step_path)
     image_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     text_exts = {".txt", ".text"}
@@ -1001,6 +1012,14 @@ def _collect_step_content(step_path):
             if content:
                 text_blocks.append(content)
     text_content = _normalize_instruction_text("\n\n".join(text_blocks))
+    logger.debug(
+        "[INSTRUCTION CONTENT] step_path=%s files=%s images=%s text_blocks=%s text_len=%s",
+        step_path,
+        len(files),
+        len(image_paths),
+        len(text_blocks),
+        len(text_content),
+    )
     return image_paths, text_content
 
 
@@ -1012,17 +1031,33 @@ async def _send_instruction_step(
 ):
     base_path = path.dirname(__file__)
     step_path = path.join(base_path, "instructions", platform_name, step_folder)
+    logger.info(
+        "[INSTRUCTION SEND] start platform=%s step=%s path=%s has_markup=%s",
+        platform_name,
+        step_folder,
+        step_path,
+        reply_markup is not None,
+    )
     if not path.isdir(step_path):
+        logger.error("[INSTRUCTION SEND] step directory missing path=%s", step_path)
         await update.message.reply_text(msg_error)
         return
 
     image_paths, text_content = _collect_step_content(step_path)
     if not image_paths and not text_content:
+        logger.error("[INSTRUCTION SEND] empty step content path=%s", step_path)
         await update.message.reply_text(msg_error)
         return
 
     if image_paths:
         caption, tail_text = _split_caption_and_tail(text_content) if text_content else (None, "")
+        logger.debug(
+            "[INSTRUCTION SEND] media mode step=%s images=%s caption_len=%s tail_len=%s",
+            step_folder,
+            len(image_paths),
+            len(caption or ""),
+            len(tail_text or ""),
+        )
 
         if len(image_paths) == 1:
             with open(image_paths[0], "rb") as image_handle:
@@ -1034,6 +1069,7 @@ async def _send_instruction_step(
                 )
             if tail_text:
                 await _reply_text_with_formatting_fallback(update.message, tail_text, reply_markup=reply_markup)
+            logger.info("[INSTRUCTION SEND] sent single-image step=%s", step_folder)
             return
 
         max_media = 10
@@ -1054,6 +1090,7 @@ async def _send_instruction_step(
             finally:
                 for handle in open_handles:
                     handle.close()
+        logger.info("[INSTRUCTION SEND] sent media-group step=%s chunks=%s", step_folder, (len(image_paths) + 9) // 10)
         if tail_text:
             await _reply_text_with_formatting_fallback(update.message, tail_text, reply_markup=reply_markup)
             return
@@ -1062,6 +1099,7 @@ async def _send_instruction_step(
         return
 
     await _reply_text_with_formatting_fallback(update.message, text_content, reply_markup=reply_markup)
+    logger.info("[INSTRUCTION SEND] sent text-only step=%s text_len=%s", step_folder, len(text_content))
 
 # def get_payment_status(user_data):
 #     """
@@ -1181,12 +1219,21 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     """
     user_id_str = str(update.effective_user.id)
     user_text = update.message.text
+    state_snapshot = {
+        "awaiting_question": context.user_data.get('awaiting_question'),
+        "awaiting_broadcast_message": context.user_data.get('awaiting_broadcast_message'),
+        "instruction_mode": context.user_data.get('instruction_mode'),
+        "instruction_platform": context.user_data.get('instruction_platform'),
+        "instruction_step": context.user_data.get('instruction_step'),
+        "instruction_step_in_progress": context.user_data.get('instruction_step_in_progress'),
+    }
     logger.debug(
-        "Incoming message: user_id=%s text=%s awaiting_question=%s awaiting_broadcast_message=%s",
+        "[FLOW ENTRY] Incoming message user_id=%s chat_id=%s msg_id=%s text=%s state=%s",
         user_id_str,
-        user_text,
-        context.user_data.get('awaiting_question'),
-        context.user_data.get('awaiting_broadcast_message'),
+        update.effective_chat.id if update.effective_chat else "<none>",
+        update.message.message_id if update.message else "<none>",
+        _safe_preview(user_text),
+        state_snapshot,
     )
     
     # Retrieve the global data
@@ -1198,7 +1245,9 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # --- LOGIC 0: ADMIN BROADCAST MODE ---
     if context.user_data.get('awaiting_broadcast_message') is True:
+        logger.info("[FLOW BRANCH] broadcast mode handler user_id=%s", user_id_str)
         if not is_admin_user(user_id_str):
+            logger.warning("[FLOW BRANCH] non-admin tried broadcast mode user_id=%s", user_id_str)
             context.user_data['awaiting_broadcast_message'] = False
             await update.message.reply_text(msg_menu, reply_markup=reply_markup)
             return
@@ -1216,6 +1265,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception:
                 failed_count += 1
                 logger.exception("Broadcast failed for recipient_id=%s", recipient_id)
+        logger.info("[FLOW BRANCH] broadcast completed user_id=%s sent=%s failed=%s", user_id_str, sent_count, failed_count)
 
         await update.message.reply_text(
             f"✅ Broadcast finished.\nSent: {sent_count}\nFailed: {failed_count}",
@@ -1225,6 +1275,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # --- LOGIC 1: CHECK PAYMENT ---
     if user_text in {btn_1, btn_1_legacy}:
+        logger.info("[FLOW BRANCH] payment status check triggered user_id=%s button=%s", user_id_str, user_text)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
@@ -1235,6 +1286,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         if found_user:
             logger.debug("Found user data for user_id=%s", user_id_str)
             curr_status, next_info = get_payment_status(found_user)
+            logger.info("[FLOW BRANCH] payment status result user_id=%s status=%s next=%s", user_id_str, curr_status, next_info)
 
             if curr_status == msg_paid:
                 # Check if it's the special "All Paid" message or a normal date
@@ -1292,6 +1344,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # --- LOGIC 2: TRIGGER QUESTION MODE ---
     elif user_text == btn_2:
+        logger.info("[FLOW BRANCH] entering question mode user_id=%s", user_id_str)
         context.user_data['awaiting_question'] = True
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
@@ -1302,6 +1355,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # --- LOGIC 2.3: CANCEL CURRENT FLOW ---
     elif user_text == btn_cancel:
+        logger.info("[FLOW BRANCH] cancel pressed user_id=%s state_before=%s", user_id_str, state_snapshot)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
@@ -1312,6 +1366,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # --- LOGIC 2.4: INSTRUCTION MENU ---
     elif user_text == btn_instruction:
+        logger.info("[FLOW BRANCH] instruction menu opened user_id=%s", user_id_str)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = True
@@ -1326,17 +1381,20 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(msg_choose_device, reply_markup=instruction_markup)
 
     elif context.user_data.get('instruction_mode') is True and user_text in instruction_platforms:
+        logger.info("[FLOW BRANCH] instruction platform selected user_id=%s platform_label=%s", user_id_str, user_text)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         platform_key = instruction_platforms[user_text]
         steps = _get_instruction_steps(platform_key)
         if not steps:
+            logger.warning("[FLOW BRANCH] no instruction steps found user_id=%s platform=%s", user_id_str, platform_key)
             context.user_data['instruction_mode'] = False
             context.user_data['instruction_platform'] = None
             context.user_data['instruction_step'] = 0
             context.user_data['instruction_step_in_progress'] = False
             await update.message.reply_text(msg_error, reply_markup=reply_markup)
         else:
+            logger.debug("[FLOW BRANCH] instruction steps loaded user_id=%s platform=%s steps=%s", user_id_str, platform_key, steps)
             context.user_data['instruction_platform'] = platform_key
             context.user_data['instruction_step'] = 0
             next_markup = build_instruction_next_markup(platform_key, 0)
@@ -1351,6 +1409,13 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data['instruction_step'] = 1
 
     elif context.user_data.get('instruction_mode') is True and user_text == btn_next:
+        logger.info(
+            "[FLOW BRANCH] instruction next user_id=%s platform=%s step=%s in_progress=%s",
+            user_id_str,
+            context.user_data.get('instruction_platform'),
+            context.user_data.get('instruction_step'),
+            context.user_data.get('instruction_step_in_progress'),
+        )
         if context.user_data.get('instruction_step_in_progress'):
             await update.message.reply_text(msg_instruction_wait)
             return
@@ -1363,6 +1428,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             steps = _get_instruction_steps(platform_key)
             step_index = context.user_data.get('instruction_step', 0)
             if step_index >= len(steps):
+                logger.info("[FLOW BRANCH] instruction finished user_id=%s platform=%s", user_id_str, platform_key)
                 context.user_data['instruction_mode'] = False
                 context.user_data['instruction_platform'] = None
                 context.user_data['instruction_step'] = 0
@@ -1377,6 +1443,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 try:
                     await _send_instruction_step(update, platform_key, steps[step_index], reply_markup=step_markup)
                 except Exception:
+                    logger.exception("[FLOW BRANCH] instruction send failed user_id=%s platform=%s step=%s", user_id_str, platform_key, step_index)
                     context.user_data['instruction_step'] = step_index
                     raise
                 finally:
@@ -1391,6 +1458,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
+        logger.info("[FLOW BRANCH] config requested user_id=%s", user_id_str)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         payment_markup = build_payment_options_markup()
@@ -1406,6 +1474,13 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             context.user_data['instruction_mode'] = False
             context.user_data['instruction_step_in_progress'] = False
             step_markup = reply_markup
+        logger.debug(
+            "[FLOW BRANCH] config flow context user_id=%s in_instruction_flow=%s platform=%s step=%s",
+            user_id_str,
+            in_instruction_flow,
+            context.user_data.get('instruction_platform'),
+            context.user_data.get('instruction_step'),
+        )
 
         user_name = update.effective_user.first_name
         if user_id_str in all_users_data:
@@ -1416,6 +1491,11 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         curr_status, _ = get_payment_status(user_entry)
         pending_payment = user_entry.get("pending_payment")
         if isinstance(pending_payment, dict) and pending_payment.get("payment_id"):
+            logger.info(
+                "[FLOW BRANCH] config blocked by pending payment user_id=%s pending=%s",
+                user_id_str,
+                pending_payment,
+            )
             if curr_status == msg_paid:
                 logger.info(
                     "[PAYMENT CHECK] user_id=%s has active subscription, clearing stale pending payment payment_id=%s",
@@ -1456,6 +1536,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
 
         if curr_status != msg_paid:
+            logger.info("[FLOW BRANCH] config denied for unpaid user_id=%s", user_id_str)
             save_bot_data(all_users_data)
             await update.message.reply_text(f"⚠️ {msg_unpaid}", reply_markup=payment_markup)
             return
@@ -1467,8 +1548,10 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         user_id = singbox_info.get("id")
         sid = singbox_info.get("shortid")
         if not user_id or not sid:
+            logger.info("[FLOW BRANCH] creating singbox creds user_id=%s email=%s", user_id_str, singbox_info.get("email"))
             user_id, sid = add_singbox_user(singbox_info["email"])
             if not user_id or not sid:
+                logger.error("[FLOW BRANCH] failed to create singbox creds user_id=%s", user_id_str)
                 await update.message.reply_text(msg_error, reply_markup=step_markup)
                 return
             singbox_info["id"] = user_id
@@ -1479,9 +1562,11 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         save_bot_data(all_users_data)
 
         config_string = build_vless_config(user_id, sid)
+        logger.info("[FLOW BRANCH] config sent user_id=%s uuid=%s sid=%s", user_id_str, user_id, sid)
         await update.message.reply_text(config_string, reply_markup=step_markup)
 
     elif user_text in {btn_restart_singbox, btn_stop_singbox, btn_start_singbox}:
+        logger.info("[FLOW BRANCH] admin sing-box command requested user_id=%s command=%s", user_id_str, user_text)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
@@ -1499,6 +1584,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         action = action_map[user_text]
         result = await to_thread(run_singbox_service_command, action)
         output = (result.stdout or "").strip()
+        logger.info("[FLOW BRANCH] sing-box command result action=%s code=%s output=%s", action, result.returncode, _safe_preview(output))
         if result.returncode == 0:
             response = f"✅ sing-box {action} executed successfully."
         else:
@@ -1509,6 +1595,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(response, reply_markup=reply_markup)
 
     elif user_text == btn_post:
+        logger.info("[FLOW BRANCH] broadcast command requested user_id=%s", user_id_str)
         context.user_data['awaiting_question'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
@@ -1523,6 +1610,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("waiting for the message", reply_markup=cancel_markup)
 
     elif user_text in PAYMENT_BUTTONS:
+        logger.info("[FLOW BRANCH] payment button flow user_id=%s button=%s", user_id_str, user_text)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
@@ -1588,6 +1676,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             "last_status": payment_data.get("status"),
         }
         save_bot_data(all_users_data)
+        logger.debug("[PAYMENT FLOW] stored pending payment user_id=%s pending=%s", user_id_str, user_entry["pending_payment"])
 
         if not payment_id or not confirmation_url:
             logger.error("[PAYMENT FLOW] missing payment id or confirmation url user_id=%s payload=%s", user_id_str, payment_data)
@@ -1607,9 +1696,11 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=build_payment_options_markup(),
         )
         context.application.create_task(monitor_payment_and_unlock(context, user_id_str, payment_id))
+        logger.info("[PAYMENT FLOW] monitor task started user_id=%s payment_id=%s", user_id_str, payment_id)
 
 
     elif user_text == btn_cancel_pending_payment:
+        logger.info("[FLOW BRANCH] cancel pending payment requested user_id=%s", user_id_str)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
@@ -1649,6 +1740,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
         payment_id = existing_pending.get("payment_id")
         cancel_data = await to_thread(cancel_yookassa_payment, payment_id)
+        logger.info("[PAYMENT CANCEL] cancel response user_id=%s payment_id=%s data=%s", user_id_str, payment_id, cancel_data)
         status = cancel_data.get("status") if isinstance(cancel_data, dict) else None
         if isinstance(cancel_data, dict) and not cancel_data.get("error") and status in {"canceled", "succeeded", "waiting_for_capture"}:
             user_entry["pending_payment"] = None
@@ -1669,6 +1761,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         latest_data = await to_thread(fetch_yookassa_payment, payment_id)
+        logger.info("[PAYMENT CANCEL] latest status after cancel user_id=%s payment_id=%s data=%s", user_id_str, payment_id, latest_data)
         latest_status = latest_data.get("status") if isinstance(latest_data, dict) else None
         if latest_status == "canceled":
             user_entry["pending_payment"] = None
@@ -1709,6 +1802,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
+        logger.info("[FLOW BRANCH] question submitted user_id=%s", user_id_str)
         context.user_data['awaiting_question'] = False
         context.user_data['awaiting_broadcast_message'] = False
         
@@ -1729,13 +1823,14 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             await context.bot.send_message(chat_id=ADMIN_ID, text=msg_to_admin)
             await update.message.reply_text(msg_question_sent, reply_markup=reply_markup)
+            logger.info("[FLOW BRANCH] question forwarded user_id=%s admin_id=%s", user_id_str, ADMIN_ID)
         except Exception:
             logger.exception("Failed to forward question from user_id=%s to admin", user_id_str)
             await update.message.reply_text(msg_error, reply_markup=reply_markup)
 
     # --- DEFAULT: SHOW MENU ---
     else:
-        logger.debug("Fallback to menu for user_id=%s", user_id_str)
+        logger.info("[FLOW BRANCH] fallback menu user_id=%s text=%s", user_id_str, _safe_preview(user_text))
         context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
@@ -1748,6 +1843,14 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['instruction_mode'] = False
     context.user_data['instruction_step_in_progress'] = False
     user_id_str = str(update.effective_user.id)
+    logger.info(
+        "[START] command received user_id=%s chat_id=%s first_name=%s last_name=%s username=%s",
+        user_id_str,
+        update.effective_chat.id if update.effective_chat else "<none>",
+        update.effective_user.first_name,
+        update.effective_user.last_name,
+        update.effective_user.username,
+    )
     reply_markup = build_main_menu_markup(user_id_str)
 
     all_users_data = context.bot_data.get('user_info', {})
@@ -1757,6 +1860,7 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         get_user_entry(all_users_data, user_id_str, user_name)
     else:
         initialize_user_entry(all_users_data, user_id_str, user_name)
+    logger.info("[START] user initialized user_id=%s is_new=%s", user_id_str, is_new_user)
     save_bot_data(all_users_data)
 
     full_name = " ".join(
@@ -1792,6 +1896,12 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 target_msg_id = int(part2.split("\n")[0].strip())
                 
                 admin_response = update.message.text
+                logger.info(
+                    "[ADMIN REPLY] parsed target_user_id=%s target_msg_id=%s response_len=%s",
+                    target_user_id,
+                    target_msg_id,
+                    len(admin_response or ""),
+                )
                 
                 # Send text as a REPLY to the specific message ID
                 await context.bot.send_message(
