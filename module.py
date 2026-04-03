@@ -26,7 +26,7 @@ SINGBOX_BIN = getenv("SINGBOX_BIN", "/usr/bin/sing-box")
 SINGBOX_CONFIG_PATH = getenv("SINGBOX_CONFIG_PATH", "/etc/sing-box/config.json")
 SINGBOX_SERVICE = getenv("SINGBOX_SERVICE", "sing-box.service")
 SINGBOX_RELOAD_ACTION = getenv("SINGBOX_RELOAD_ACTION", "restart")
-INBOUND_TAG = getenv("SINGBOX_INBOUND_TAG", "vless-in")
+INBOUND_TAG = getenv("SINGBOX_INBOUND_TAG", "tuic-in")
 API_SERVER = getenv("SINGBOX_API_SERVER", "127.0.0.1")
 API_PORT = getenv("SINGBOX_API_PORT", "9090")
 

@@ -1,6 +1,7 @@
 from uuid import uuid4
+from secrets import token_urlsafe
 from sys import argv, exit
-from os import getenv, urandom
+from os import getenv
 from logging import basicConfig, DEBUG, getLogger
 from module import update_singbox_users
 
@@ -10,30 +11,27 @@ basicConfig(
 )
 logger = getLogger(__name__)
 
-LEVEL = int(getenv("SINGBOX_USER_LEVEL", "1"))
-FLOW = getenv("SINGBOX_FLOW", "xtls-rprx-vision")
 IP = getenv("SINGBOX_PUBLIC_IP", "0.0.0.0")
 PORT = getenv("SINGBOX_PUBLIC_PORT", "443")
-PBK = getenv("SINGBOX_REALITY_PBK", "")
-SNI = getenv("SINGBOX_REALITY_SNI", "")
-SHORTID = getenv("SINGBOX_REALITY_SHORTID", "")
+SNI = getenv("SINGBOX_TUIC_SNI", getenv("SINGBOX_REALITY_SNI", IP))
+ALPN = getenv("SINGBOX_TUIC_ALPN", "h3")
+CONGESTION_CONTROL = getenv("SINGBOX_TUIC_CONGESTION_CONTROL", "bbr")
+UDP_RELAY_MODE = getenv("SINGBOX_TUIC_UDP_RELAY_MODE", "quic")
+ALLOW_INSECURE = getenv("SINGBOX_TUIC_ALLOW_INSECURE", "0")
 
 
-def _build_user_entry(email, user_id):
-    entry = {
+def _build_user_entry(email, user_id, password):
+    return {
         "name": email,
         "uuid": user_id,
-        "flow": FLOW,
+        "password": password,
     }
-    if LEVEL >= 0:
-        entry["level"] = LEVEL
-    return entry
 
 
 def add_user(email):
     user_id = str(uuid4())
-    sid = SHORTID or str(urandom(8).hex())
-    logger.debug("Adding sing-box user email=%s user_id=%s", email, user_id)
+    password = token_urlsafe(24)
+    logger.debug("Adding sing-box TUIC user email=%s user_id=%s", email, user_id)
 
     def mutator(users):
         filtered = []
@@ -43,7 +41,7 @@ def add_user(email):
             if user.get("name") == email or user.get("email") == email:
                 continue
             filtered.append(user)
-        filtered.append(_build_user_entry(email, user_id))
+        filtered.append(_build_user_entry(email, user_id, password))
         users[:] = filtered
         return True, "created"
 
@@ -54,12 +52,12 @@ def add_user(email):
         return None, None
 
     print(f"added user {email}")
-    logger.debug("User added successfully email=%s sid=%s", email, sid)
-    return user_id, sid
+    logger.debug("User added successfully email=%s password_set=%s", email, bool(password))
+    return user_id, password
 
 
-def add_user_with_id(email, user_id):
-    logger.debug("Adding existing sing-box user email=%s user_id=%s", email, user_id)
+def add_user_with_id(email, user_id, password):
+    logger.debug("Adding existing sing-box TUIC user email=%s user_id=%s", email, user_id)
 
     def mutator(users):
         filtered = []
@@ -71,7 +69,7 @@ def add_user_with_id(email, user_id):
             if user.get("uuid") == user_id:
                 continue
             filtered.append(user)
-        filtered.append(_build_user_entry(email, user_id))
+        filtered.append(_build_user_entry(email, user_id, password))
         users[:] = filtered
         return True, "loaded"
 
@@ -84,12 +82,13 @@ def add_user_with_id(email, user_id):
     return True
 
 
-def output_vless_string(user_id, sid):
-    logger.debug("Outputting VLESS string for user_id=%s sid=%s", user_id, sid)
+def output_tuic_string(user_id, password):
+    logger.debug("Outputting TUIC string for user_id=%s", user_id)
     print(
-        f"vless://{user_id}@{IP}:{PORT}"
-        f"?security=reality&encryption=none&pbk={PBK}&headerType=none"
-        f"&fp=chrome&type=tcp&flow={FLOW}&sni={SNI}&sid={sid}#sing-box"
+        f"tuic://{user_id}:{password}@{IP}:{PORT}"
+        f"?alpn={ALPN}&congestion_control={CONGESTION_CONTROL}"
+        f"&udp_relay_mode={UDP_RELAY_MODE}&sni={SNI}&allow_insecure={ALLOW_INSECURE}"
+        "#telegram:@vpnjesusbot"
     )
 
 
@@ -100,6 +99,6 @@ if __name__ == "__main__":
 
     email = argv[1]
     logger.debug("Starting add_user with email=%s", email)
-    user_id, sid = add_user(email)
-    if user_id and sid:
-        output_vless_string(user_id, sid)
+    user_id, password = add_user(email)
+    if user_id and password:
+        output_tuic_string(user_id, password)
