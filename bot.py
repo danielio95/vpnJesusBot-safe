@@ -114,6 +114,7 @@ btn_cancel_pending_payment = "🧾 Отменить незавершённый �
 btn_restart_xray = "restart xray"
 btn_stop_xray = "stop xray"
 btn_start_xray = "start xray"
+btn_post = "post"
 
 PAYMENT_BUTTONS = {
     btn_pay_1_month: {"months": 1, "amount": 99},
@@ -172,7 +173,7 @@ def is_admin_user(user_id_str: str) -> bool:
 def build_main_menu_markup(user_id_str: Optional[str] = None):
     keyboard = [[btn_1], [btn_3], [btn_2], [btn_instruction]]
     if user_id_str and is_admin_user(user_id_str):
-        keyboard.extend([[btn_restart_xray], [btn_stop_xray], [btn_start_xray]])
+        keyboard.extend([[btn_restart_xray], [btn_stop_xray], [btn_start_xray], [btn_post]])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -1181,10 +1182,11 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id_str = str(update.effective_user.id)
     user_text = update.message.text
     logger.debug(
-        "Incoming message: user_id=%s text=%s awaiting_question=%s",
+        "Incoming message: user_id=%s text=%s awaiting_question=%s awaiting_broadcast_message=%s",
         user_id_str,
         user_text,
         context.user_data.get('awaiting_question'),
+        context.user_data.get('awaiting_broadcast_message'),
     )
     
     # Retrieve the global data
@@ -1194,9 +1196,37 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # Define the main keyboard menu
     reply_markup = build_main_menu_markup(user_id_str)
 
+    # --- LOGIC 0: ADMIN BROADCAST MODE ---
+    if context.user_data.get('awaiting_broadcast_message') is True:
+        if not is_admin_user(user_id_str):
+            context.user_data['awaiting_broadcast_message'] = False
+            await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+            return
+
+        context.user_data['awaiting_broadcast_message'] = False
+
+        recipients = [uid for uid in all_users_data.keys() if uid != user_id_str]
+        sent_count = 0
+        failed_count = 0
+
+        for recipient_id in recipients:
+            try:
+                await context.bot.send_message(chat_id=recipient_id, text=user_text)
+                sent_count += 1
+            except Exception:
+                failed_count += 1
+                logger.exception("Broadcast failed for recipient_id=%s", recipient_id)
+
+        await update.message.reply_text(
+            f"✅ Broadcast finished.\nSent: {sent_count}\nFailed: {failed_count}",
+            reply_markup=reply_markup,
+        )
+        return
+
     # --- LOGIC 1: CHECK PAYMENT ---
     if user_text in {btn_1, btn_1_legacy}:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
 
@@ -1263,6 +1293,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2: TRIGGER QUESTION MODE ---
     elif user_text == btn_2:
         context.user_data['awaiting_question'] = True
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
         logger.debug("User %s entered question mode", user_id_str)
@@ -1272,6 +1303,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2.3: CANCEL CURRENT FLOW ---
     elif user_text == btn_cancel:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_platform'] = None
         context.user_data['instruction_step'] = 0
@@ -1281,6 +1313,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2.4: INSTRUCTION MENU ---
     elif user_text == btn_instruction:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = True
         context.user_data['instruction_platform'] = None
         context.user_data['instruction_step'] = 0
@@ -1294,6 +1327,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif context.user_data.get('instruction_mode') is True and user_text in instruction_platforms:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         platform_key = instruction_platforms[user_text]
         steps = _get_instruction_steps(platform_key)
         if not steps:
@@ -1358,6 +1392,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 2.5: GENERATE CONFIG ---
     elif user_text == btn_3:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         payment_markup = build_payment_options_markup()
         in_instruction_flow = (
             context.user_data.get('instruction_mode') is True
@@ -1448,6 +1483,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif user_text in {btn_restart_xray, btn_stop_xray, btn_start_xray}:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
 
@@ -1472,8 +1508,23 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await update.message.reply_text(response, reply_markup=reply_markup)
 
+    elif user_text == btn_post:
+        context.user_data['awaiting_question'] = False
+        context.user_data['instruction_mode'] = False
+        context.user_data['instruction_step_in_progress'] = False
+
+        if not is_admin_user(user_id_str):
+            context.user_data['awaiting_broadcast_message'] = False
+            await update.message.reply_text(msg_menu, reply_markup=reply_markup)
+            return
+
+        context.user_data['awaiting_broadcast_message'] = True
+        cancel_markup = ReplyKeyboardMarkup([[btn_cancel]], resize_keyboard=True)
+        await update.message.reply_text("waiting for the message", reply_markup=cancel_markup)
+
     elif user_text in PAYMENT_BUTTONS:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
         payment_choice = PAYMENT_BUTTONS[user_text]
@@ -1560,6 +1611,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif user_text == btn_cancel_pending_payment:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
 
@@ -1658,6 +1710,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- LOGIC 3: PROCESS THE QUESTION TEXT ---
     elif context.user_data.get('awaiting_question') is True:
         context.user_data['awaiting_question'] = False
+        context.user_data['awaiting_broadcast_message'] = False
         
         # We catch the message ID here so we can reply to it later
         user_msg_id = update.message.message_id
@@ -1683,6 +1736,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
     # --- DEFAULT: SHOW MENU ---
     else:
         logger.debug("Fallback to menu for user_id=%s", user_id_str)
+        context.user_data['awaiting_broadcast_message'] = False
         context.user_data['instruction_mode'] = False
         context.user_data['instruction_step_in_progress'] = False
         await update.message.reply_text(msg_menu, reply_markup=reply_markup)
@@ -1690,6 +1744,7 @@ async def handle_start_or_text(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['awaiting_question'] = False
+    context.user_data['awaiting_broadcast_message'] = False
     context.user_data['instruction_mode'] = False
     context.user_data['instruction_step_in_progress'] = False
     user_id_str = str(update.effective_user.id)
