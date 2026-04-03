@@ -39,7 +39,7 @@ def run_singbox_command(args):
 
 
 def run_systemctl(action, service=SINGBOX_SERVICE):
-    cmd = [SYSTEMCTL_BIN, action, service]
+    cmd = ["sudo", SYSTEMCTL_BIN, action, service]
     if SYSTEMCTL_USE_SUDO:
         cmd.insert(0, "sudo")
     logger.debug("Running systemctl command: %s", cmd)
