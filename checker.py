@@ -15,7 +15,7 @@ POLL_INTERVAL = 3
 
 def delete_user(email):
     logger.debug("Deleting user via script email=%s", email)
-    run(["python3", "delete_user.py", email], check=False)
+    run(["python3", "offload_user.py", email], check=False)
 
 def monitor_sessions():
     active_connections = {}

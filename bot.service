@@ -12,14 +12,14 @@ ExecStart=/usr/local/telebot/venv/bin/python3 /usr/local/telebot/bot.py --stdout
 Restart=always
 RestartSec=5
 
-Environment="XRAY_PUBLIC_IP=45.151.183.231"
-Environment="XRAY_REALITY_PBK=J8-18qflZog-ffsXWh290d7OjFyDmRW81nymvEsm1F0"
-Environment="XRAY_REALITY_SNI=bostad.blocket.se"
-Environment="XRAY_INBOUND_LISTEN=45.151.183.231"
-Environment="XRAY_BIN=/usr/local/xray/xray"
-Environment="XRAY_API_PORT=10002"
-Environment="XRAY_INBOUND_TAG=vless-in"
-Environment="XRAY_REALITY_SHORTID=abecf7e74a3f52fc"
+Environment="SINGBOX_PUBLIC_IP=45.151.183.231"
+Environment="SINGBOX_REALITY_PBK=J8-18qflZog-ffsXWh290d7OjFyDmRW81nymvEsm1F0"
+Environment="SINGBOX_REALITY_SNI=bostad.blocket.se"
+Environment="SINGBOX_BIN=/usr/bin/sing-box"
+Environment="SINGBOX_CONFIG_PATH=/etc/sing-box/config.json"
+Environment="SINGBOX_SERVICE=sing-box.service"
+Environment="SINGBOX_INBOUND_TAG=vless-in"
+Environment="SINGBOX_REALITY_SHORTID=abecf7e74a3f52fc"
 
 # Send logs to standard output (viewable via journalctl)
 StandardOutput=append:/usr/local/telebot/log/output.log

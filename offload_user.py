@@ -1,7 +1,6 @@
-from os import getenv
 from sys import argv, exit
 from logging import basicConfig, DEBUG, getLogger
-from module import API_PORT, API_SERVER, run_xray_api
+from module import update_singbox_users
 
 basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -9,25 +8,29 @@ basicConfig(
 )
 logger = getLogger(__name__)
 
-INBOUND_TAG = getenv("XRAY_INBOUND_TAG", "inbound")
 
 def delete_user(email):
-    logger.debug("Deleting user email=%s", email)
-    result = run_xray_api([
-        "rmu",
-        f"--server={API_SERVER}:{API_PORT}",
-        f"-tag={INBOUND_TAG}",
-        email
-    ])
+    logger.debug("Deleting sing-box user email=%s", email)
 
-    if result.returncode != 0:
-        logger.error("Failed to delete user: %s", result.stderr.strip() or "unknown error")
-        print(result.stderr.strip() or "error: could not delete user")
+    def mutator(users):
+        before = len(users)
+        users[:] = [
+            user for user in users
+            if isinstance(user, dict) and user.get("name") != email and user.get("email") != email
+        ]
+        removed = before - len(users)
+        return removed > 0, f"removed={removed}"
+
+    success, details = update_singbox_users(mutator)
+    if not success:
+        logger.error("Failed to delete user: %s", details)
+        print(details or "error: could not delete user")
         return 0
 
     print(f"deleted user {email}")
-    logger.debug("User deleted successfully email=%s", email)
+    logger.debug("User deleted successfully email=%s details=%s", email, details)
     return 1
+
 
 if __name__ == "__main__":
     if len(argv) < 2:
