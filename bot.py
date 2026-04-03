@@ -16,7 +16,6 @@ from telegram import Update, ReplyKeyboardMarkup, InputMediaPhoto
 from logging import INFO, WARNING, DEBUG, StreamHandler, basicConfig, getLogger
 from add_user import (
     add_user as add_singbox_user,
-    add_user_with_id as add_singbox_user_with_id,
     IP,
     PORT,
     SNI,
@@ -25,6 +24,7 @@ from add_user import (
     UDP_RELAY_MODE,
     ALLOW_INSECURE,
 )
+from module import update_singbox_users
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # --- CONFIGURATION ---
@@ -722,6 +722,7 @@ def _offload_user(email):
 def preload_active_users_into_singbox(all_users_data):
     loaded_count = 0
     skipped_count = 0
+    preload_candidates = []
 
     for user_id_str, user_entry in all_users_data.items():
         normalized_entry = _normalize_user_entry(user_id_str, user_entry)
@@ -762,16 +763,64 @@ def preload_active_users_into_singbox(all_users_data):
             skipped_count += 1
             continue
 
-        success = add_singbox_user_with_id(email, user_id, user_password)
+        preload_candidates.append((user_id_str, str(email), str(user_id), str(user_password)))
+
+    if preload_candidates:
+        def mutator(users):
+            existing_by_name = {}
+            existing_by_uuid = {}
+            for user in users:
+                if not isinstance(user, dict):
+                    continue
+                name = str(user.get("name") or user.get("email") or "")
+                uuid = str(user.get("uuid") or "")
+                if name:
+                    existing_by_name[name] = user
+                if uuid:
+                    existing_by_uuid[uuid] = user
+
+            changed = False
+            for _, email, user_id, user_password in preload_candidates:
+                existing_user = existing_by_name.get(email) or existing_by_uuid.get(user_id)
+                if (
+                    existing_user
+                    and str(existing_user.get("name") or existing_user.get("email") or "") == email
+                    and str(existing_user.get("uuid") or "") == user_id
+                    and str(existing_user.get("password") or "") == user_password
+                ):
+                    continue
+
+                users[:] = [
+                    user for user in users
+                    if isinstance(user, dict)
+                    and str(user.get("name") or user.get("email") or "") != email
+                    and str(user.get("uuid") or "") != user_id
+                ]
+                new_user = {"name": email, "uuid": user_id, "password": user_password}
+                users.append(new_user)
+                existing_by_name[email] = new_user
+                existing_by_uuid[user_id] = new_user
+                changed = True
+
+            return changed, "loaded"
+
+        success, details = update_singbox_users(mutator)
         if not success:
-            logger.error("[SINGBOX PRELOAD] failed user_id=%s email=%s", user_id_str, email)
+            logger.error("[SINGBOX PRELOAD] failed batch_load count=%s details=%s", len(preload_candidates), details)
+            skipped_count += len(preload_candidates)
+            preload_candidates = []
+
+    for preload_user_id, email, user_id, _ in preload_candidates:
+        singbox_info = all_users_data.get(preload_user_id, {}).get("singbox", {})
+        if not isinstance(singbox_info, dict):
+            logger.error("[SINGBOX PRELOAD] failed to map loaded user user_id=%s email=%s uuid=%s", preload_user_id, email, user_id)
             skipped_count += 1
             continue
 
         singbox_info["offloaded"] = False
         singbox_info["offloaded_at"] = None
         loaded_count += 1
-        logger.info("[SINGBOX PRELOAD] loaded user_id=%s email=%s", user_id_str, email)
+        logger.info("[SINGBOX PRELOAD] loaded user_id=%s email=%s", preload_user_id, email)
 
     if loaded_count:
         save_bot_data(all_users_data)
