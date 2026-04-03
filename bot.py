@@ -38,6 +38,8 @@ YOOKASSA_RETURN_URL = getenv("YOOKASSA_RETURN_URL", "https://google.com").strip(
 YOOKASSA_API_BASE = "https://api.yookassa.ru/v3"
 PAYMENT_POLL_INTERVAL_SECONDS = 10
 PAYMENT_POLL_ATTEMPTS = 60
+SYSTEMCTL_BIN = getenv("SINGBOX_SYSTEMCTL_BIN", "/usr/bin/systemctl")
+SYSTEMCTL_USE_SUDO = getenv("SINGBOX_SYSTEMCTL_USE_SUDO", "0").strip() == "1"
 
 def configure_logging(stdout_log_mode: str = "enable"):
     if stdout_log_mode == "debug":
@@ -203,8 +205,11 @@ def build_pending_payment_markup():
 
 
 def run_singbox_service_command(action: str):
+    cmd = [SYSTEMCTL_BIN, action, "sing-box.service"]
+    if SYSTEMCTL_USE_SUDO:
+        cmd.insert(0, "sudo")
     return run(
-        ["sudo", "/usr/bin/systemctl", action, "sing-box.service"],
+        cmd,
         stdout=PIPE,
         stderr=STDOUT,
         text=True,

@@ -22,6 +22,8 @@ Environment="SINGBOX_BIN=/usr/bin/sing-box"
 Environment="SINGBOX_CONFIG_PATH=/etc/sing-box/config.json"
 Environment="SINGBOX_SERVICE=sing-box.service"
 Environment="SINGBOX_INBOUND_TAG=tuic-in"
+Environment="SINGBOX_SYSTEMCTL_BIN=/usr/bin/systemctl"
+Environment="SINGBOX_SYSTEMCTL_USE_SUDO=0"
 
 # Send logs to standard output (viewable via journalctl)
 StandardOutput=append:/usr/local/telebot/log/output.log
