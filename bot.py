@@ -1,4 +1,5 @@
 from sys import stdout
+from uuid import uuid4
 from html import unescape
 from subprocess import run, PIPE, STDOUT
 from typing import Optional
