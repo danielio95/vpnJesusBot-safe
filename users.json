@@ -97,16 +97,16 @@
     },
     "927637849": {
         "name": "Максим Матюхов",
-        "date": 22,
+        "date": 7,
         "payments": {
             "2026": {
                 "jan": 1,
                 "feb": 1,
                 "mar": 1,
-                "apr": 0,
-                "may": 0,
-                "jun": 0,
-                "jul": 0,
+                "apr": 1,
+                "may": 1,
+                "jun": 1,
+                "jul": 1,
                 "aug": 0,
                 "sep": 0,
                 "oct": 0,
@@ -136,7 +136,7 @@
                 "feb": 1,
                 "mar": 1,
                 "apr": 1,
-                "may": 0,
+                "may": 1,
                 "jun": 0,
                 "jul": 0,
                 "aug": 0,
@@ -148,10 +148,10 @@
         },
         "singbox": {
             "email": "599634469",
-            "id": "b2d1a383-61af-4fd9-a476-ad18b261a74e",
-            "password": "Q44Ebn_RO0A3dmmw_Ex1sMdrjD1doMj3",
-            "offloaded": false,
-            "offloaded_at": null
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-12T09:10:53.395779"
         },
         "pending_payment": null,
         "trial": {
@@ -308,8 +308,8 @@
         },
         "singbox": {
             "email": "5879603362",
-            "id": "5d36577e-34f8-4017-b8a4-9a7a6d407bb9",
-            "password": "",
+            "id": "b3d07ca6-72e1-4007-b288-e6581f86f6b6",
+            "password": "ZS9Kwj2E9ukMUmY4dvUfr6oAXmIDKN04",
             "offloaded": false,
             "offloaded_at": null
         },
@@ -445,10 +445,10 @@
         },
         "singbox": {
             "email": "6397354872",
-            "id": "80f57e03-adab-41b4-ab50-321cbbe4b94f",
+            "id": "",
             "password": "",
-            "offloaded": false,
-            "offloaded_at": null
+            "offloaded": true,
+            "offloaded_at": "2026-04-12T09:10:53.533532"
         },
         "pending_payment": null,
         "trial": {
@@ -861,10 +861,10 @@
         },
         "singbox": {
             "email": "avito_7870725432",
-            "id": "bce4a3b3-3b94-4641-8419-2af6c21b11b4",
+            "id": "",
             "password": "",
-            "offloaded": false,
-            "offloaded_at": null
+            "offloaded": true,
+            "offloaded_at": "2026-04-12T09:10:53.606723"
         },
         "pending_payment": null,
         "trial": {
@@ -1137,8 +1137,8 @@
                 "feb": 0,
                 "mar": 1,
                 "apr": 1,
-                "may": 0,
-                "jun": 0,
+                "may": 1,
+                "jun": 1,
                 "jul": 0,
                 "aug": 0,
                 "sep": 0,
@@ -1306,6 +1306,70 @@
                 "feb": 0,
                 "mar": 0,
                 "apr": 1,
+                "may": 1,
+                "jun": 1,
+                "jul": 1,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "7939646682",
+            "id": "3a2c0d87-d195-4a1a-a18f-4b24b671a005",
+            "password": "lemUTDtQfjct7jfnf6VOVdSiJDQP4Dfa",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-03T10:22:01.501209"
+        }
+    },
+    "7205533982": {
+        "name": "Tikhon Polovnikov",
+        "date": 7,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 1,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "7205533982",
+            "id": "db1e9f5b-6957-42eb-877f-c483aa22490f",
+            "password": "lemUTDtQfjct7jfnfoVOVlSiJ7QP4kra",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-03T10:22:01.501209"
+        }
+    },
+    "temp": {
+        "name": "temp",
+        "date": 13,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
                 "may": 0,
                 "jun": 0,
                 "jul": 0,
@@ -1317,9 +1381,9 @@
             }
         },
         "singbox": {
-            "email": "7939646682",
-            "id": "4ccb63c4-c5a1-4ee4-994e-b1875d73b42a",
-            "password": "InfqEpdyKxW8YmR6VS6G00ylZ4OplWnB",
+            "email": "temp",
+            "id": "2217d437-8ac2-4d41-8c5e-7f4535979e51",
+            "password": "W0z5M7f7UaKmkrsmsanSaQgisbHxDoPt",
             "offloaded": false,
             "offloaded_at": null
         },
