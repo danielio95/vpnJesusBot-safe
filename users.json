@@ -1323,7 +1323,16 @@
             "offloaded": false,
             "offloaded_at": null
         },
-        "pending_payment": null,
+        "pending_payment": {
+            "payment_id": "316d65a5-000f-5001-8000-185c81e85fa1",
+            "confirmation_url": "https://yoomoney.ru/checkout/payments/v2/contract/sbp?orderId=316d65a5-000f-5001-8000-185c81e85fa1",
+            "months": 1,
+            "amount": 99,
+            "created_at": "2026-04-12T10:03:49.435233",
+            "last_status": "pending",
+            "last_checked_at": "2026-04-12T10:11:21.753741",
+            "attempt": 43
+        },
         "trial": {
             "is_used": true,
             "granted_at": "2026-04-03T10:22:01.501209"
