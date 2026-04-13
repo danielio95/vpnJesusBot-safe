@@ -148,10 +148,10 @@
         },
         "singbox": {
             "email": "599634469",
-            "id": "",
-            "password": "",
-            "offloaded": true,
-            "offloaded_at": "2026-04-12T09:10:53.395779"
+            "id": "889c058d-8c29-49ec-8167-b6a462414ab6",
+            "password": "4N9KWaK44zlzvb66_wMoNmrW31TrpxxJ",
+            "offloaded": false,
+            "offloaded_at": null
         },
         "pending_payment": null,
         "trial": {
@@ -426,14 +426,14 @@
     },
     "6397354872": {
         "name": "Ника",
-        "date": 5,
+        "date": 12,
         "payments": {
             "2026": {
                 "jan": 0,
                 "feb": 1,
                 "mar": 1,
                 "apr": 1,
-                "may": 0,
+                "may": 1,
                 "jun": 0,
                 "jul": 0,
                 "aug": 0,
@@ -1382,10 +1382,10 @@
         },
         "singbox": {
             "email": "temp",
-            "id": "2217d437-8ac2-4d41-8c5e-7f4535979e51",
-            "password": "W0z5M7f7UaKmkrsmsanSaQgisbHxDoPt",
-            "offloaded": false,
-            "offloaded_at": null
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-13T01:59:00.161243"
         },
         "pending_payment": null,
         "trial": {
