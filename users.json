@@ -1392,5 +1392,69 @@
             "is_used": true,
             "granted_at": "2026-04-03T10:22:01.501209"
         }
+    },
+    "1065060759": {
+        "name": "Aksana",
+        "date": 17,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 0,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "1065060759",
+            "id": "4a707a81-619c-4884-9d47-77e625405989",
+            "password": "Q7pzxptLWL9jU4ju62nZX-Uu-VRV-oyD",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-14T14:32:43.651691"
+        }
+    },
+    "5916709762": {
+        "name": "Zona",
+        "date": 17,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 0,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "5916709762",
+            "id": "cea6ed30-4979-4f7d-8a28-057ab92a0aa6",
+            "password": "0RhmmLgKp4gJNj7T7mE_z5K4p8G5SwHr",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-14T17:43:41.017292"
+        }
     }
 }
