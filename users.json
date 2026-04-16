@@ -1456,5 +1456,37 @@
             "is_used": true,
             "granted_at": "2026-04-14T17:43:41.017292"
         }
+    },
+    "avito_7934899005": {
+        "name": ".",
+        "date": 16,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 1,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "avito_7934899005",
+            "id": "35116436-c0a1-4358-a198-0efe7360cae4",
+            "password": "0RhmmLgKp4gJNj7T7mE_15K4p885Swir",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-03-02T10:11:15.925344"
+        }
     }
 }
