@@ -1488,5 +1488,69 @@
             "is_used": true,
             "granted_at": "2026-03-02T10:11:15.925344"
         }
+    },
+    "avito_7934638092": {
+        "name": ".",
+        "date": 16,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 1,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "avito_7934638092",
+            "id": "194daa65-5f0c-4709-a730-64c22321d876",
+            "password": "0RhmmLgKp4gJNj747mEi15K4p885Siir",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-03-02T10:11:15.925344"
+        }
+    },
+    "5290127839": {
+        "name": "Эльвира",
+        "date": 19,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 0,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "5290127839",
+            "id": "893bd89e-5e69-42c1-bbcc-78eab7f18aaa",
+            "password": "6ZOPVO83fvs3gN443koD6jZj6h_TboU-",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-16T11:40:30.698659"
+        }
     }
 }
