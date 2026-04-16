@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync telebot users.json to Git
+After=network.target
+
+[Service]
+Type=oneshot
+User=telebot
+WorkingDirectory=/usr/local/telebot
+ExecStart=/usr/local/telebot/telebot-sync.sh
+
+[Install]
+WantedBy=multi-user.target

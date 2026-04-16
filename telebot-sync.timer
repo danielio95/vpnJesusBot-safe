@@ -1,0 +1,10 @@
+[Unit]
+Description=Run telebot sync daily at noon
+
+[Timer]
+OnCalendar=*-*-* 12:00:00
+Persistent=true
+Unit=telebot-sync.service
+
+[Install]
+WantedBy=timers.target
