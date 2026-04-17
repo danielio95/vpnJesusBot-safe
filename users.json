@@ -1414,10 +1414,10 @@
         },
         "singbox": {
             "email": "1065060759",
-            "id": "4a707a81-619c-4884-9d47-77e625405989",
-            "password": "Q7pzxptLWL9jU4ju62nZX-Uu-VRV-oyD",
-            "offloaded": false,
-            "offloaded_at": null
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-17T01:59:00.196122"
         },
         "pending_payment": null,
         "trial": {
@@ -1446,10 +1446,10 @@
         },
         "singbox": {
             "email": "5916709762",
-            "id": "cea6ed30-4979-4f7d-8a28-057ab92a0aa6",
-            "password": "0RhmmLgKp4gJNj7T7mE_z5K4p8G5SwHr",
-            "offloaded": false,
-            "offloaded_at": null
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-17T01:59:00.362535"
         },
         "pending_payment": null,
         "trial": {
@@ -1551,6 +1551,79 @@
         "trial": {
             "is_used": true,
             "granted_at": "2026-04-16T11:40:30.698659"
+        }
+    },
+    "453850396": {
+        "name": "Elizabeth",
+        "date": 19,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 0,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "453850396",
+            "id": "83a32607-d4d9-4454-ad7d-44f537124b90",
+            "password": "YYTHysvnJK936KS3fhSw2sesbt9unSMO",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": {
+            "payment_id": "3172f129-000f-5000-b000-1879053b5570",
+            "confirmation_url": "https://yoomoney.ru/checkout/payments/v2/contract/sbp?orderId=3172f129-000f-5000-b000-1879053b5570",
+            "months": 1,
+            "amount": 99,
+            "created_at": "2026-04-16T15:00:25.133474",
+            "last_status": "pending",
+            "last_checked_at": "2026-04-16T15:10:59.114292",
+            "attempt": 60
+        },
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-16T14:58:24.098961"
+        }
+    },
+    "1080775378": {
+        "name": "Сергей",
+        "date": 20,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 1,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "1080775378",
+            "id": "6435cb34-4d68-479a-9548-af40ba281c7f",
+            "password": "gbPBhPHecBv1Vb6o8yPzxJrerWeJEkTX",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-17T04:56:33.682384"
         }
     }
 }
