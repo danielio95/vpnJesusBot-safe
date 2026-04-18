@@ -477,10 +477,10 @@
         },
         "singbox": {
             "email": "1055217923",
-            "id": "c0763baa-b030-4249-a7c4-3905d0542710",
+            "id": "",
             "password": "",
-            "offloaded": false,
-            "offloaded_at": null
+            "offloaded": true,
+            "offloaded_at": "2026-04-18T01:59:00.159616"
         },
         "pending_payment": null,
         "trial": {
