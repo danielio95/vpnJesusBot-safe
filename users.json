@@ -1542,10 +1542,10 @@
         },
         "singbox": {
             "email": "5290127839",
-            "id": "893bd89e-5e69-42c1-bbcc-78eab7f18aaa",
-            "password": "6ZOPVO83fvs3gN443koD6jZj6h_TboU-",
-            "offloaded": false,
-            "offloaded_at": null
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-19T01:59:00.188374"
         },
         "pending_payment": null,
         "trial": {
@@ -1574,10 +1574,10 @@
         },
         "singbox": {
             "email": "453850396",
-            "id": "83a32607-d4d9-4454-ad7d-44f537124b90",
-            "password": "YYTHysvnJK936KS3fhSw2sesbt9unSMO",
-            "offloaded": false,
-            "offloaded_at": null
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-19T01:59:00.368850"
         },
         "pending_payment": {
             "payment_id": "3172f129-000f-5000-b000-1879053b5570",
