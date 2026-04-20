@@ -1625,5 +1625,37 @@
             "is_used": true,
             "granted_at": "2026-04-17T04:56:33.682384"
         }
+    },
+    "5707516223": {
+        "name": "Серега",
+        "date": 23,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 0,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "5707516223",
+            "id": "d2d31328-09e3-4460-86ca-84b2c281bf43",
+            "password": "OexbsHpfosm1d74g-Loq_c34O_3PEY7g",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-20T05:40:26.746385"
+        }
     }
 }
