@@ -1656,15 +1656,47 @@
         },
         "singbox": {
             "email": "5707516223",
-            "id": "d2d31328-09e3-4460-86ca-84b2c281bf43",
-            "password": "OexbsHpfosm1d74g-Loq_c34O_3PEY7g",
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-23T01:59:00.203095"
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-04-20T05:40:26.746385"
+        }
+    },
+    "976602023": {
+        "name": "Viktor",
+        "date": 25,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 1,
+                "may": 1,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "976602023",
+            "id": "f56c1990-ddf0-4fb1-808f-69b4e906717a",
+            "password": "7TMGclIJMv63Rjb_BXa8v1OLRfL7tMf-",
             "offloaded": false,
             "offloaded_at": null
         },
         "pending_payment": null,
         "trial": {
             "is_used": true,
-            "granted_at": "2026-04-20T05:40:26.746385"
+            "granted_at": "2026-04-22T14:04:11.157322"
         }
     }
 }
