@@ -1126,10 +1126,10 @@
         },
         "singbox": {
             "email": "7448295536",
-            "id": "f4d37b78-826b-4fff-8bb2-134ae5078ec1",
-            "password": "n6QKpmth8N3sTnH9iGWgV3b6q8dFBsZv",
-            "offloaded": false,
-            "offloaded_at": null
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-04-26T01:59:00.166782"
         },
         "pending_payment": null,
         "trial": {
