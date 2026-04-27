@@ -762,7 +762,7 @@
                 "feb": 1,
                 "mar": 1,
                 "apr": 1,
-                "may": 0,
+                "may": 1,
                 "jun": 0,
                 "jul": 0,
                 "aug": 0,
@@ -774,8 +774,8 @@
         },
         "singbox": {
             "email": "5178460300",
-            "id": "960e0d63-d925-45b0-8081-75817cd12723",
-            "password": "ddp6qsHEreWkgOEzQQbHoduxUjOBFxmN",
+            "id": "3a83920c-bba9-45e2-a0ac-2c20d1c00b24",
+            "password": "uhmrmloDP0WLHU3DGBiydJLgahDMSX7d",
             "offloaded": false,
             "offloaded_at": null
         },
@@ -1131,7 +1131,16 @@
             "offloaded": true,
             "offloaded_at": "2026-04-26T01:59:00.166782"
         },
-        "pending_payment": null,
+        "pending_payment": {
+            "payment_id": "3180aa1b-000f-5001-8000-1d136c550db4",
+            "confirmation_url": "https://yoomoney.ru/checkout/payments/v2/contract/sbp?orderId=3180aa1b-000f-5001-8000-1d136c550db4",
+            "months": 1,
+            "amount": 99,
+            "created_at": "2026-04-27T00:48:59.606195",
+            "last_status": "pending",
+            "last_checked_at": "2026-04-27T00:59:05.605720",
+            "attempt": 60
+        },
         "trial": {
             "is_used": true,
             "granted_at": "2026-03-23T10:50:58.049459"
