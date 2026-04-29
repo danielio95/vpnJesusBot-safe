@@ -934,10 +934,10 @@
         },
         "singbox": {
             "email": "avito_7934151424",
-            "id": "75c01be7-83ed-4f4a-98fc-dc6a384e16c0",
+            "id": "",
             "password": "",
-            "offloaded": false,
-            "offloaded_at": null
+            "offloaded": true,
+            "offloaded_at": "2026-04-29T01:59:00.099707"
         },
         "pending_payment": null,
         "trial": {
