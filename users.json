@@ -1189,14 +1189,14 @@
     },
     "1284968883": {
         "name": "Мишаня",
-        "date": 28,
+        "date": 29,
         "payments": {
             "2026": {
                 "jan": 0,
                 "feb": 0,
                 "mar": 1,
                 "apr": 1,
-                "may": 0,
+                "may": 1,
                 "jun": 0,
                 "jul": 0,
                 "aug": 0,
@@ -1208,10 +1208,10 @@
         },
         "singbox": {
             "email": "1284968883",
-            "id": "",
-            "password": "",
-            "offloaded": true,
-            "offloaded_at": "2026-04-28T01:59:00.184034"
+            "id": "de9e7d9c-a20c-4c11-9d1b-8eeb1334dcf8",
+            "password": "nNuhmDyoN79XwIW_P_DFDSl3_rvDfmt0",
+            "offloaded": false,
+            "offloaded_at": null
         },
         "pending_payment": null,
         "trial": {
