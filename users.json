@@ -137,7 +137,7 @@
                 "mar": 1,
                 "apr": 1,
                 "may": 1,
-                "jun": 0,
+                "jun": 1,
                 "jul": 0,
                 "aug": 0,
                 "sep": 0,
@@ -148,8 +148,8 @@
         },
         "singbox": {
             "email": "599634469",
-            "id": "889c058d-8c29-49ec-8167-b6a462414ab6",
-            "password": "4N9KWaK44zlzvb66_wMoNmrW31TrpxxJ",
+            "id": "bbf291b3-2406-410c-a4de-7c2a687b374e",
+            "password": "0QbN7-5EpyU0FUAHbQmWgIEEFYQ180CS",
             "offloaded": false,
             "offloaded_at": null
         },
@@ -212,8 +212,8 @@
         },
         "singbox": {
             "email": "1134536583",
-            "id": "a499c0cb-d46b-4202-b80d-f1b44ef1b1fb",
-            "password": "",
+            "id": "a29fcc66-2949-4e95-aa85-5b9601fb9036",
+            "password": "B2JwSqEgVz7dD3Hct9A9lCYjSXJN5wed",
             "offloaded": false,
             "offloaded_at": null
         },
@@ -372,21 +372,12 @@
         },
         "singbox": {
             "email": "6152732650",
-            "id": "1f45a3b5-a8f8-4fcf-b7ce-5c312a651dbd",
-            "password": "",
+            "id": "8a1207b1-d7b5-4986-86aa-25b0c732256f",
+            "password": "0B8_qtnjKRRuAmZb_UHGFMCSAAdRmBNJ",
             "offloaded": false,
             "offloaded_at": null
         },
-        "pending_payment": {
-            "payment_id": "313861d0-000f-5000-8000-101066030c25",
-            "confirmation_url": "https://yoomoney.ru/checkout/payments/v2/contract/sbp?orderId=313861d0-000f-5000-8000-101066030c25",
-            "months": 3,
-            "amount": 279,
-            "created_at": "2026-03-03T03:57:20.185300",
-            "last_status": "pending",
-            "last_checked_at": "2026-03-03T04:07:24.682685",
-            "attempt": 60
-        },
+        "pending_payment": null,
         "trial": {
             "is_used": true,
             "granted_at": "2026-02-13T18:23:11.266115"
@@ -550,8 +541,8 @@
         },
         "singbox": {
             "email": "5154320206",
-            "id": "8e0dc200-d395-48d7-9c14-8e560688a7f9",
-            "password": "",
+            "id": "eebc66fb-6c7e-457e-804a-0d710ee27d30",
+            "password": "8QFF7708IsfAtkzK71TbjNymN3Ibx1iP",
             "offloaded": false,
             "offloaded_at": null
         },
@@ -1167,21 +1158,12 @@
         },
         "singbox": {
             "email": "985342774",
-            "id": "",
-            "password": "",
-            "offloaded": true,
-            "offloaded_at": "2026-03-28T00:59:00.200033"
+            "id": "b7b28d22-fbbb-40ac-871a-39edfe7b861b",
+            "password": "OT_G3mXtuGjXnXVdprX9SMXLpfsPeW8j",
+            "offloaded": false,
+            "offloaded_at": null
         },
-        "pending_payment": {
-            "payment_id": "3161bd92-000f-5001-9000-10641ab3f87d",
-            "confirmation_url": "https://yoomoney.ru/checkout/payments/v2/contract/sbp?orderId=3161bd92-000f-5001-9000-10641ab3f87d",
-            "months": 1,
-            "amount": 99,
-            "created_at": "2026-04-03T13:51:46.503827",
-            "last_status": "pending",
-            "last_checked_at": "2026-04-03T14:05:33.147199",
-            "attempt": 60
-        },
+        "pending_payment": null,
         "trial": {
             "is_used": true,
             "granted_at": "2026-03-25T01:47:23.683002"
@@ -1357,7 +1339,7 @@
                 "mar": 0,
                 "apr": 1,
                 "may": 1,
-                "jun": 0,
+                "jun": 1,
                 "jul": 0,
                 "aug": 0,
                 "sep": 0,
@@ -1706,6 +1688,38 @@
         "trial": {
             "is_used": true,
             "granted_at": "2026-04-22T14:04:11.157322"
+        }
+    },
+    "1694774675": {
+        "name": "Диана",
+        "date": 7,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 0,
+                "may": 1,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "1694774675",
+            "id": "f4ff334c-7570-4b81-b790-076eda7759eb",
+            "password": "4U0uaD0oDdsOrmKpUUWk1Epe4zV6zmt0",
+            "offloaded": false,
+            "offloaded_at": null
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-05-04T20:22:43.445863"
         }
     }
 }
