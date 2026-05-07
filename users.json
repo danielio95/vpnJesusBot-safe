@@ -1711,15 +1711,47 @@
         },
         "singbox": {
             "email": "1694774675",
-            "id": "f4ff334c-7570-4b81-b790-076eda7759eb",
-            "password": "4U0uaD0oDdsOrmKpUUWk1Epe4zV6zmt0",
+            "id": "",
+            "password": "",
+            "offloaded": true,
+            "offloaded_at": "2026-05-07T01:59:00.177573"
+        },
+        "pending_payment": null,
+        "trial": {
+            "is_used": true,
+            "granted_at": "2026-05-04T20:22:43.445863"
+        }
+    },
+    "7490911830": {
+        "name": "Вова",
+        "date": 9,
+        "payments": {
+            "2026": {
+                "jan": 0,
+                "feb": 0,
+                "mar": 0,
+                "apr": 0,
+                "may": 1,
+                "jun": 0,
+                "jul": 0,
+                "aug": 0,
+                "sep": 0,
+                "oct": 0,
+                "nov": 0,
+                "dec": 0
+            }
+        },
+        "singbox": {
+            "email": "7490911830",
+            "id": "59b157c5-c0aa-49b2-9ce5-bc860508e6e9",
+            "password": "cx-15ZnUkaO-Bxs8YY30Z4YDfC43xwsk",
             "offloaded": false,
             "offloaded_at": null
         },
         "pending_payment": null,
         "trial": {
             "is_used": true,
-            "granted_at": "2026-05-04T20:22:43.445863"
+            "granted_at": "2026-05-06T12:41:53.910848"
         }
     }
 }
