@@ -1,0 +1,11 @@
+# /etc/systemd/system/telebot-git-commit.timer
+
+[Unit]
+Description=Run Telebot Git Commit Every Hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+# /etc/systemd/system/telebot-git-commit.service
+
+[Unit]
+Description=Commit Telebot changes
+
+[Service]
+Type=oneshot
+User=main
+WorkingDirectory=/usr/local/telebot
+ExecStart=/bin/bash -c '/usr/bin/git add -A && /usr/bin/git commit -m "add latest users" && git push || true'
