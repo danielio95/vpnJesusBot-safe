@@ -4,14 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=telebot
-Group=telebot
+User=main
+Group=main
 WorkingDirectory=/usr/local/telebot
 
-ExecStart=/usr/local/telebot/venv/bin/python3 /usr/local/telebot/bot.py --stdout-log enable
+ExecStart=/usr/local/telebot/venv/bin/python3 /usr/local/telebot/bot.py
 Restart=always
 RestartSec=5
-
 
 Environment="TELEGRAM_BOT_TOKEN=8259748377:AAEmjPuMAX4JFyn-egbRBlN8qtidi2NwUEE"
 Environment="TELEGRAM_ADMIN_ID=7724842241"
