@@ -1788,7 +1788,7 @@
     },
     "8662247635": {
         "name": "Tikhon",
-        "date": 7,
+        "date": 8,
         "payments": {
             "2026": {
                 "jan": 0,
@@ -1797,7 +1797,7 @@
                 "apr": 0,
                 "may": 1,
                 "jun": 1,
-                "jul": 0,
+                "jul": 1,
                 "aug": 0,
                 "sep": 0,
                 "oct": 0,
@@ -1807,10 +1807,10 @@
         },
         "singbox": {
             "email": "8662247635",
-            "id": "",
-            "password": "",
-            "offloaded": true,
-            "offloaded_at": "2026-06-08T08:19:34.737089"
+            "id": "9ca54bbf-fc42-4d67-9292-e8e9d9fd48af",
+            "password": "lE4XtIFFDV22KGO2WEXqwnYUTUGNy3Ei",
+            "offloaded": false,
+            "offloaded_at": null
         },
         "pending_payment": null,
         "trial": {
