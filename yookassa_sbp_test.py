@@ -1,9 +1,10 @@
 from uuid import uuid4
 from os import getenv
 from qrcode import make
-from requests import post
+from requests import Request, Session
 from threading import Event
 from typing import Dict, Any
+from urllib.parse import urlparse
 from flask import Flask, request, jsonify, redirect
 
 # =========================
@@ -32,6 +33,38 @@ orders: Dict[str, Dict[str, Any]] = {}
 events: Dict[str, Event] = {}
 
 
+def _format_prepared_http_request(prepared_request):
+    body = prepared_request.body or b""
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    parsed_url = urlparse(prepared_request.url)
+    host = parsed_url.netloc
+    header_items = list(prepared_request.headers.items())
+    if host and not any(key.lower() == "host" for key, _ in header_items):
+        header_items.insert(0, ("Host", host))
+    headers = "\n".join(f"{key}: {value}" for key, value in header_items)
+    request_text = f"{prepared_request.method} {prepared_request.url} HTTP/1.1"
+    if headers:
+        request_text = f"{request_text}\n{headers}"
+    if body:
+        request_text = f"{request_text}\n\n{body}"
+    return request_text
+
+
+def send_logged_http_request(method, url, **kwargs):
+    request_kwargs = {
+        key: kwargs.pop(key)
+        for key in ("headers", "files", "data", "params", "auth", "cookies", "hooks", "json")
+        if key in kwargs
+    }
+    with Session() as session:
+        prepared_request = session.prepare_request(Request(method, url, **request_kwargs))
+        request_text = _format_prepared_http_request(prepared_request)
+        print(f"[HTTP REQUEST] Outgoing request:\n{request_text}")
+        app.logger.info("[HTTP REQUEST] Outgoing request:\n%s", request_text)
+        return session.send(prepared_request, **kwargs)
+
+
 def create_sbp_payment(amount_rub: str, description: str, order_id: str) -> Dict[str, Any]:
     """
     Creates an SBP payment in YooKassa.
@@ -53,7 +86,8 @@ def create_sbp_payment(amount_rub: str, description: str, order_id: str) -> Dict
         },
     }
 
-    r = post(
+    r = send_logged_http_request(
+        "POST",
         f"{API_BASE}/payments",
         auth=(SHOP_ID, SECRET_KEY),
         headers={

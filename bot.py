@@ -3,8 +3,8 @@ from uuid import uuid4
 from html import unescape
 from subprocess import run, PIPE, STDOUT
 from typing import Optional
-from urllib.parse import quote
-from requests import post, get
+from urllib.parse import quote, urlparse
+from requests import Request, Session
 from argparse import ArgumentParser
 from os import getenv, path, listdir
 from asyncio import to_thread, sleep
@@ -70,6 +70,36 @@ def configure_logging(stdout_log_mode: str = "enable"):
 
 configure_logging()
 logger = getLogger(__name__)
+
+
+def _format_prepared_http_request(prepared_request):
+    body = prepared_request.body or b""
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    parsed_url = urlparse(prepared_request.url)
+    host = parsed_url.netloc
+    header_items = list(prepared_request.headers.items())
+    if host and not any(key.lower() == "host" for key, _ in header_items):
+        header_items.insert(0, ("Host", host))
+    headers = "\n".join(f"{key}: {value}" for key, value in header_items)
+    request_text = f"{prepared_request.method} {prepared_request.url} HTTP/1.1"
+    if headers:
+        request_text = f"{request_text}\n{headers}"
+    if body:
+        request_text = f"{request_text}\n\n{body}"
+    return request_text
+
+
+def send_logged_http_request(method, url, **kwargs):
+    request_kwargs = {
+        key: kwargs.pop(key)
+        for key in ("headers", "files", "data", "params", "auth", "cookies", "hooks", "json")
+        if key in kwargs
+    }
+    with Session() as session:
+        prepared_request = session.prepare_request(Request(method, url, **request_kwargs))
+        logger.info("[HTTP REQUEST] Outgoing request:\n%s", _format_prepared_http_request(prepared_request))
+        return session.send(prepared_request, **kwargs)
 
 def _safe_preview(value, max_len=180):
     text = str(value)
@@ -481,7 +511,8 @@ def create_yookassa_payment(amount_rub, description, user_id, months_count):
     logger.debug("[PAYMENT CREATE] Request payload: %s", payload)
 
     try:
-        response = post(
+        response = send_logged_http_request(
+            "POST",
             f"{YOOKASSA_API_BASE}/payments",
             auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
             headers={
@@ -513,7 +544,8 @@ def fetch_yookassa_payment(payment_id):
 
     logger.debug("[PAYMENT STATUS] Fetching payment_id=%s", payment_id)
     try:
-        response = get(
+        response = send_logged_http_request(
+            "GET",
             f"{YOOKASSA_API_BASE}/payments/{payment_id}",
             auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
             timeout=30,
@@ -543,7 +575,8 @@ def cancel_yookassa_payment(payment_id):
     idempotence_key = str(uuid4())
     logger.info("[PAYMENT CANCEL] cancel payment_id=%s idempotence=%s", payment_id, idempotence_key)
     try:
-        response = post(
+        response = send_logged_http_request(
+            "POST",
             f"{YOOKASSA_API_BASE}/payments/{payment_id}/cancel",
             auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY),
             headers={
