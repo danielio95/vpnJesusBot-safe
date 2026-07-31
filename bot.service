@@ -12,16 +12,16 @@ ExecStart=/usr/local/telebot/venv/bin/python3 /usr/local/telebot/bot.py
 Restart=always
 RestartSec=5
 
-Environment="TELEGRAM_BOT_TOKEN=8259748377:AAEmjPuMAX4JFyn-egbRBlN8qtidi2NwUEE"
-Environment="TELEGRAM_ADMIN_ID=7724842241"
+Environment="TELEGRAM_BOT_TOKEN="
+Environment="TELEGRAM_ADMIN_ID="
 
-#Environment="YOOKASSA_SHOP_ID=1271966"
-#Environment="YOOKASSA_SECRET_KEY=test_KqlWjq2j2dZZNARLpAk-j5FJEbRMuTJN_tdwHG0xUzE"
+#Environment="YOOKASSA_SHOP_ID="
+#Environment="YOOKASSA_SECRET_KEY="
 
-Environment="YOOKASSA_SHOP_ID=1270362"
-Environment="YOOKASSA_SECRET_KEY=live_57kFIXtG1mAsBnV3QP8EaUMPW0QOYlNYDz36l_GWEcU"
+Environment="YOOKASSA_SHOP_ID="
+Environment="YOOKASSA_SECRET_KEY="
 
-Environment="SINGBOX_PUBLIC_IP=gappulpnp.online"
+Environment="SINGBOX_PUBLIC_IP=45.151.183.231"
 Environment="SINGBOX_TUIC_SNI=gappulpnp.online"
 Environment="SINGBOX_TUIC_ALPN=h3"
 Environment="SINGBOX_TUIC_CONGESTION_CONTROL=bbr"
